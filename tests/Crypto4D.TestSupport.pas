@@ -9,6 +9,20 @@ uses
 type
   ETestSupportError = class(Exception);
 
+  TVerificationTally = record
+  private
+    FTotal: Integer;
+    FVerified: Integer;
+    FMismatches: TArray<string>;
+
+  public
+    procedure Add(const Description: string; const Expected, Verified: Boolean);
+    function MismatchList: string;
+    function Summary(const Source: string): string;
+    property Total: Integer read FTotal;
+    property Verified: Integer read FVerified;
+  end;
+
   TTestSupport = class
   private
     const
@@ -19,11 +33,13 @@ type
       DerLongFormFlag   = $80;
 
     class function FindVectorsRoot: string; static;
+    class function LoadJsonValue(const RelativePath: string): TJSONValue; static;
     class function HexDigitValue(const Digit: Char): Byte; static;
 
   public
     class function VectorFile(const RelativePath: string): string; static;
     class function LoadJsonObject(const RelativePath: string): TJSONObject; static;
+    class function LoadJsonArray(const RelativePath: string): TJSONArray; static;
     class function ArrayOf(const Parent: TJSONObject; const Name: string): TJSONArray; static;
     class function ObjectAt(const Items: TJSONArray; const Index: Integer): TJSONObject; static;
     class function IntegerAt(const Items: TJSONArray; const Index: Integer): Integer; static;
@@ -48,6 +64,34 @@ resourcestring
   InvalidHexDigit  = 'Invalid hexadecimal digit "%s"';
   OddHexLength     = 'Hexadecimal text has an odd length of %d';
   JsonObjectWanted = 'File "%s" does not hold a JSON object';
+  JsonArrayWanted  = 'File "%s" does not hold a JSON array';
+  TallySummary     = '%s: %d cases, %d verify, %d mismatches';
+  TallyMismatch    = '%s verified=%s';
+
+procedure TVerificationTally.Add(const Description: string; const Expected, Verified: Boolean);
+begin
+  Inc(FTotal);
+  if Verified then
+    Inc(FVerified);
+
+  const IsUnexpected = (Verified <> Expected);
+  if IsUnexpected then
+  begin
+    const VerifiedText = BoolToStr(Verified, True);
+    const Mismatch     = Format(TallyMismatch, [Description, VerifiedText]);
+    FMismatches := FMismatches + [Mismatch];
+  end;
+end;
+
+function TVerificationTally.MismatchList: string;
+begin
+  Result := string.Join('; ', FMismatches);
+end;
+
+function TVerificationTally.Summary(const Source: string): string;
+begin
+  Result := Format(TallySummary, [Source, FTotal, FVerified, Length(FMismatches)]);
+end;
 
 class function TTestSupport.VectorFile(const RelativePath: string): string;
 begin
@@ -82,18 +126,38 @@ end;
 
 class function TTestSupport.LoadJsonObject(const RelativePath: string): TJSONObject;
 begin
-  const FileName = VectorFile(RelativePath);
-  const Content  = TFile.ReadAllBytes(FileName);
-  const Parsed   = TJSONObject.ParseJSONValue(Content, 0);
+  const Parsed = LoadJsonValue(RelativePath);
 
   const IsObject = (Parsed is TJSONObject);
   if not IsObject then
   begin
     Parsed.Free;
-    raise ETestSupportError.CreateFmt(JsonObjectWanted, [FileName]);
+    raise ETestSupportError.CreateFmt(JsonObjectWanted, [RelativePath]);
   end;
 
   Result := TJSONObject(Parsed);
+end;
+
+class function TTestSupport.LoadJsonArray(const RelativePath: string): TJSONArray;
+begin
+  const Parsed = LoadJsonValue(RelativePath);
+
+  const IsArray = (Parsed is TJSONArray);
+  if not IsArray then
+  begin
+    Parsed.Free;
+    raise ETestSupportError.CreateFmt(JsonArrayWanted, [RelativePath]);
+  end;
+
+  Result := TJSONArray(Parsed);
+end;
+
+class function TTestSupport.LoadJsonValue(const RelativePath: string): TJSONValue;
+begin
+  const FileName = VectorFile(RelativePath);
+  const Content  = TFile.ReadAllBytes(FileName);
+
+  Result := TJSONObject.ParseJSONValue(Content, 0);
 end;
 
 class function TTestSupport.ArrayOf(const Parent: TJSONObject; const Name: string): TJSONArray;

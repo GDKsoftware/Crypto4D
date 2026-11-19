@@ -30,6 +30,9 @@ uses
   Crypto4D.Ed25519.Tests in 'Crypto4D.Ed25519.Tests.pas',
   Crypto4D.X509.Tests in 'Crypto4D.X509.Tests.pas',
   Crypto4D.Wycheproof.Tests in 'Crypto4D.Wycheproof.Tests.pas',
+  Crypto4D.Ed25519Vectors.Tests in 'Crypto4D.Ed25519Vectors.Tests.pas',
+  Crypto4D.NistCavp.Tests in 'Crypto4D.NistCavp.Tests.pas',
+  Crypto4D.X509Limbo.Tests in 'Crypto4D.X509Limbo.Tests.pas',
   Crypto4D.OpenSsl.Tests in 'Crypto4D.OpenSsl.Tests.pas',
   Crypto4D.Benchmark.Tests in 'Crypto4D.Benchmark.Tests.pas';
 

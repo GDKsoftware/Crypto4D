@@ -97,6 +97,9 @@
         <DCCReference Include="Crypto4D.Ed25519.Tests.pas"/>
         <DCCReference Include="Crypto4D.X509.Tests.pas"/>
         <DCCReference Include="Crypto4D.Wycheproof.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Ed25519Vectors.Tests.pas"/>
+        <DCCReference Include="Crypto4D.NistCavp.Tests.pas"/>
+        <DCCReference Include="Crypto4D.X509Limbo.Tests.pas"/>
         <DCCReference Include="Crypto4D.OpenSsl.Tests.pas"/>
         <DCCReference Include="Crypto4D.Benchmark.Tests.pas"/>
         <BuildConfiguration Include="Base">
