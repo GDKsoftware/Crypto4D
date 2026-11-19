@@ -78,9 +78,27 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="..\src\Crypto4D.Errors.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Bytes.pas"/>
         <DCCReference Include="..\src\Crypto4D.BigInteger.pas"/>
+        <DCCReference Include="..\src\Crypto4D.PrimeField.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Hash.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Der.pas"/>
+        <DCCReference Include="..\src\Crypto4D.P256.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Ecdsa.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Rsa.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Edwards25519.pas"/>
+        <DCCReference Include="..\src\Crypto4D.Ed25519.pas"/>
+        <DCCReference Include="..\src\Crypto4D.X509.pas"/>
         <DCCReference Include="Crypto4D.TestSupport.pas"/>
         <DCCReference Include="Crypto4D.BigInteger.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Der.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Ecdsa.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Rsa.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Ed25519.Tests.pas"/>
+        <DCCReference Include="Crypto4D.X509.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Wycheproof.Tests.pas"/>
+        <DCCReference Include="Crypto4D.OpenSsl.Tests.pas"/>
+        <DCCReference Include="Crypto4D.Benchmark.Tests.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

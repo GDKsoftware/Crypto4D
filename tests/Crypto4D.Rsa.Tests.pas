@@ -1,0 +1,280 @@
+unit Crypto4D.Rsa.Tests;
+
+interface
+
+uses
+  System.SysUtils,
+  DUnitX.TestFramework;
+
+type
+  [TestFixture]
+  TRsaPkcs1Sha256Tests = class
+  private
+    const
+      WycheproofFile = 'wycheproof/rsa_signature_2048_sha256_test.json';
+      ModulusBytes   = 256;
+      GroupsName     = 'testGroups';
+      TestsName      = 'tests';
+      ModulusName    = 'publicKey.modulus';
+      ExponentName   = 'publicKey.publicExponent';
+      MessageName    = 'msg';
+      SignatureName  = 'sig';
+
+    var
+      FModulus: TBytes;
+      FExponent: TBytes;
+      FMessage: TBytes;
+      FSignature: TBytes;
+
+    function PowerOfTwo(const Exponent: Integer): TBytes;
+
+  public
+    [SetupFixture]
+    procedure SetupFixture;
+
+    [Test]
+    procedure Verify_ValidSignature_ReturnsTrue;
+
+    [Test]
+    procedure Verify_ChangedMessage_ReturnsFalse;
+
+    [Test]
+    procedure Verify_SignatureBitsFlipped_ReturnFalse;
+
+    [Test]
+    [TestCase('Empty', '0')]
+    [TestCase('OneShort', '255')]
+    [TestCase('OneLong', '257')]
+    procedure Verify_SignatureOfWrongLength_ReturnsFalse(const SignatureLength: Integer);
+
+    [Test]
+    procedure Verify_SignatureEqualToModulus_ReturnsFalse;
+
+    [Test]
+    procedure Verify_KeyNeverAssigned_RaisesArgumentError;
+
+    [Test]
+    [TestCase('Bits1024', '1023')]
+    [TestCase('Bits2047', '2046')]
+    [TestCase('Bits16385', '16384')]
+    procedure Create_UnsupportedModulusSize_RaisesArgumentError(const HighestBit: Integer);
+
+    [Test]
+    [TestCase('Bits2048', '2047')]
+    [TestCase('Bits16384', '16383')]
+    procedure Create_ModulusAtSizeLimit_IsAccepted(const HighestBit: Integer);
+
+    [Test]
+    procedure Create_ModulusWithLeadingZeros_CountsSignificantBits;
+
+    [Test]
+    [TestCase('Empty', '')]
+    [TestCase('Zero', '00')]
+    [TestCase('One', '01')]
+    [TestCase('Two', '02')]
+    [TestCase('Even', '010000')]
+    [TestCase('TwoToThe64PlusOne', '010000000000000001')]
+    [TestCase('TwoToThe64MinusOneTimes256', 'ffffffffffffffff01')]
+    procedure Create_UnsupportedExponent_RaisesArgumentError(const ExponentHex: string);
+
+    [Test]
+    [TestCase('Three', '03')]
+    [TestCase('F4', '010001')]
+    [TestCase('F4WithLeadingZeros', '0000010001')]
+    [TestCase('LargestAllowed', 'ffffffffffffffff')]
+    procedure Create_SupportedExponent_IsAccepted(const ExponentHex: string);
+
+    [Test]
+    procedure Verify_ExponentThree_ReturnsTrue;
+
+    [Test]
+    procedure Verify_OtherOddExponent_ReturnsFalse;
+  end;
+
+implementation
+
+uses
+  Crypto4D.BigInteger,
+  Crypto4D.Errors,
+  Crypto4D.Rsa,
+  Crypto4D.TestSupport;
+
+procedure TRsaPkcs1Sha256Tests.SetupFixture;
+begin
+  const Document = TTestSupport.LoadJsonObject(WycheproofFile);
+  try
+    const Groups = TTestSupport.ArrayOf(Document, GroupsName);
+    const Group  = TTestSupport.ObjectAt(Groups, 0);
+    const Tests  = TTestSupport.ArrayOf(Group, TestsName);
+    const Test   = TTestSupport.ObjectAt(Tests, 0);
+
+    FModulus   := TTestSupport.HexToBytes(Group.GetValue<string>(ModulusName));
+    FExponent  := TTestSupport.HexToBytes(Group.GetValue<string>(ExponentName));
+    FMessage   := TTestSupport.HexToBytes(Test.GetValue<string>(MessageName));
+    FSignature := TTestSupport.HexToBytes(Test.GetValue<string>(SignatureName));
+  finally
+    Document.Free;
+  end;
+end;
+
+function TRsaPkcs1Sha256Tests.PowerOfTwo(const Exponent: Integer): TBytes;
+begin
+  const Value = TBigInteger.One shl Exponent;
+  Result := Value.ToBytes;
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_ValidSignature_ReturnsTrue;
+begin
+  const Key = TRsaPublicKey.Create(FModulus, FExponent);
+
+  const Verified = TRsaPkcs1Sha256.Verify(Key, FMessage, FSignature);
+
+  Assert.IsTrue(Verified);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_ChangedMessage_ReturnsFalse;
+begin
+  const Key     = TRsaPublicKey.Create(FModulus, FExponent);
+  const Changed = FMessage + TBytes.Create(0);
+
+  const Verified = TRsaPkcs1Sha256.Verify(Key, Changed, FSignature);
+
+  Assert.IsFalse(Verified);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_SignatureBitsFlipped_ReturnFalse;
+begin
+  const Key = TRsaPublicKey.Create(FModulus, FExponent);
+  for var ByteIndex := 0 to High(FSignature) do
+  begin
+    const BitIndex = ByteIndex * 8 + (ByteIndex mod 8);
+    const Damaged  = TTestSupport.FlipBit(FSignature, BitIndex);
+
+    const Verified = TRsaPkcs1Sha256.Verify(Key, FMessage, Damaged);
+
+    Assert.IsFalse(Verified, Format('bit %d', [BitIndex]));
+  end;
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_SignatureOfWrongLength_ReturnsFalse(const SignatureLength: Integer);
+begin
+  const Key = TRsaPublicKey.Create(FModulus, FExponent);
+  var Resized := Copy(FSignature);
+  SetLength(Resized, SignatureLength);
+
+  const Verified = TRsaPkcs1Sha256.Verify(Key, FMessage, Resized);
+
+  Assert.IsFalse(Verified);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_SignatureEqualToModulus_ReturnsFalse;
+begin
+  const Key       = TRsaPublicKey.Create(FModulus, FExponent);
+  const Modulus   = TBigInteger.FromBytes(FModulus);
+  const Signature = Modulus.ToFixedBytes(ModulusBytes);
+
+  const Verified = TRsaPkcs1Sha256.Verify(Key, FMessage, Signature);
+
+  Assert.IsFalse(Verified);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_KeyNeverAssigned_RaisesArgumentError;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      TRsaPkcs1Sha256.Verify(Default(TRsaPublicKey), FMessage, FSignature);
+    end,
+    ECrypto4DArgumentError);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Create_UnsupportedModulusSize_RaisesArgumentError(const HighestBit: Integer);
+begin
+  const Modulus = PowerOfTwo(HighestBit);
+
+  Assert.WillRaise(
+    procedure
+    begin
+      TRsaPublicKey.Create(Modulus, FExponent);
+    end,
+    ECrypto4DArgumentError);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Create_ModulusAtSizeLimit_IsAccepted(const HighestBit: Integer);
+begin
+  const Modulus = PowerOfTwo(HighestBit);
+
+  const Key = TRsaPublicKey.Create(Modulus, FExponent);
+
+  Assert.AreEqual(TTestSupport.BytesToHex(Modulus), TTestSupport.BytesToHex(Key.Modulus));
+end;
+
+procedure TRsaPkcs1Sha256Tests.Create_ModulusWithLeadingZeros_CountsSignificantBits;
+begin
+  var Padded: TBytes;
+  SetLength(Padded, ModulusBytes);
+  Padded[1] := $FF;
+
+  Assert.WillRaise(
+    procedure
+    begin
+      TRsaPublicKey.Create(Padded, FExponent);
+    end,
+    ECrypto4DArgumentError);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Create_UnsupportedExponent_RaisesArgumentError(const ExponentHex: string);
+begin
+  const Exponent = TTestSupport.HexToBytes(ExponentHex);
+
+  Assert.WillRaise(
+    procedure
+    begin
+      TRsaPublicKey.Create(FModulus, Exponent);
+    end,
+    ECrypto4DArgumentError);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Create_SupportedExponent_IsAccepted(const ExponentHex: string);
+begin
+  const Exponent = TTestSupport.HexToBytes(ExponentHex);
+
+  const Key = TRsaPublicKey.Create(FModulus, Exponent);
+
+  Assert.AreEqual(ExponentHex, TTestSupport.BytesToHex(Key.Exponent));
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_ExponentThree_ReturnsTrue;
+begin
+  const Document = TTestSupport.LoadJsonObject(WycheproofFile);
+  try
+    const Groups    = TTestSupport.ArrayOf(Document, GroupsName);
+    const Group     = TTestSupport.ObjectAt(Groups, 1);
+    const Tests     = TTestSupport.ArrayOf(Group, TestsName);
+    const Test      = TTestSupport.ObjectAt(Tests, 0);
+    const Modulus   = TTestSupport.HexToBytes(Group.GetValue<string>(ModulusName));
+    const Exponent  = TTestSupport.HexToBytes(Group.GetValue<string>(ExponentName));
+    const Message   = TTestSupport.HexToBytes(Test.GetValue<string>(MessageName));
+    const Signature = TTestSupport.HexToBytes(Test.GetValue<string>(SignatureName));
+    const Key       = TRsaPublicKey.Create(Modulus, Exponent);
+
+    const Verified = TRsaPkcs1Sha256.Verify(Key, Message, Signature);
+
+    Assert.AreEqual('03', TTestSupport.BytesToHex(Exponent));
+    Assert.AreEqual('valid', Test.GetValue<string>('result'));
+    Assert.IsTrue(Verified);
+  finally
+    Document.Free;
+  end;
+end;
+
+procedure TRsaPkcs1Sha256Tests.Verify_OtherOddExponent_ReturnsFalse;
+begin
+  const Key = TRsaPublicKey.Create(FModulus, TBytes.Create(3));
+
+  const Verified = TRsaPkcs1Sha256.Verify(Key, FMessage, FSignature);
+
+  Assert.IsFalse(Verified);
+end;
+
+end.
