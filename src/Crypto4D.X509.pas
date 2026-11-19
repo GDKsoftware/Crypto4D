@@ -236,9 +236,10 @@ type
     /// <param name="IssuerKey">Public key of the issuer, for example the PublicKey of the issuer
     ///   certificate.</param>
     /// <returns>True when the signature over TbsCertificate is valid for IssuerKey. False when the two signature
-    ///   algorithm identifiers of the certificate differ, the algorithm is not ecdsa-with-SHA256,
-    ///   sha256WithRSAEncryption or Ed25519, IssuerKey is not a key for that algorithm, or the signature does not
-    ///   match.</returns>
+    ///   algorithm identifiers of the certificate differ in object identifier or in parameters, the algorithm is
+    ///   not ecdsa-with-SHA256, sha256WithRSAEncryption or Ed25519, the parameters are something else than absent
+    ///   or NULL for ecdsa-with-SHA256 and sha256WithRSAEncryption or are present for Ed25519, IssuerKey is not a
+    ///   key for that algorithm, or the signature does not match.</returns>
     function IsSignedBy(const IssuerKey: TX509PublicKeyInfo): Boolean;
 
     /// <summary>
@@ -753,7 +754,7 @@ end;
 function TX509CertificateInfo.VerifyEcdsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
 begin
   var Key: TEcdsaP256PublicKey;
-  const CanVerify = FSignatureAlgorithm.HasNoParameters and IssuerKey.TryGetEcdsaP256Key(Key);
+  const CanVerify = FSignatureAlgorithm.HasNullOrNoParameters and IssuerKey.TryGetEcdsaP256Key(Key);
   if not CanVerify then
     Exit(False);
 

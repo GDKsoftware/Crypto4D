@@ -9,4 +9,21 @@ The certificates were generated with OpenSSL 3.5.4 (`openssl req -x509` and `ope
 subjectPublicKeyInfo as DER, the signature algorithm and which certificate holds the issuer key. The
 parser tests compare the Crypto4D result with these values.
 
+## Certificates with a parameter for ecdsa-with-SHA256
+
+RFC 5758 says that the AlgorithmIdentifier of `ecdsa-with-SHA256` has no parameters. Certificates that
+carry an ASN.1 NULL there are in use all the same. Four self-signed certificates with one P-256 key cover
+the cases. They were not made with OpenSSL: the DER was put together directly, and the signature over
+`tbsCertificate` is valid in all four, so that only the parameters differ.
+
+| File | Inside `tbsCertificate` | Outside | `IsSignedBy` | OpenSSL 3.5.4 `verify -check_ss_sig` |
+|------|-------------------------|---------|--------------|--------------------------------------|
+| `p256_null_parameter.der` | NULL | NULL | True | OK |
+| `p256_null_parameter_inner_only.der` | NULL | absent | False | certificate signature failure |
+| `p256_null_parameter_outer_only.der` | absent | NULL | False | certificate signature failure |
+| `p256_sequence_parameter.der` | empty SEQUENCE | empty SEQUENCE | False | OK |
+
+The last row is a difference on purpose: OpenSSL accepts the empty SEQUENCE, Crypto4D accepts only absent
+and NULL.
+
 The private keys were discarded. The certificates are test data and must not be trusted for anything.

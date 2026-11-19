@@ -85,6 +85,13 @@ type
     procedure IsSignedBy_KeyOfOtherAlgorithm_ReturnsFalse(const FileName: string; const OtherFileName: string);
 
     [Test]
+    [TestCase('NullInBoth', 'p256_null_parameter.der,True')]
+    [TestCase('NullInTbsCertificateOnly', 'p256_null_parameter_inner_only.der,False')]
+    [TestCase('NullOutsideTbsCertificateOnly', 'p256_null_parameter_outer_only.der,False')]
+    [TestCase('EmptySequenceInBoth', 'p256_sequence_parameter.der,False')]
+    procedure IsSignedBy_EcdsaAlgorithmWithParameter_AcceptsNullInBothOnly(const FileName: string; const Expected: Boolean);
+
+    [Test]
     [TestCase('P256', 'p256.der')]
     [TestCase('Rsa2048', 'rsa2048.der')]
     [TestCase('Ed25519', 'ed25519.der')]
@@ -427,6 +434,16 @@ begin
   const Verified = Certificate.IsSignedBy(Other.PublicKey);
 
   Assert.IsFalse(Verified);
+end;
+
+procedure TX509Tests.IsSignedBy_EcdsaAlgorithmWithParameter_AcceptsNullInBothOnly(const FileName: string;
+                                                                                  const Expected: Boolean);
+begin
+  const Certificate = Parse(FileName);
+
+  const Verified = Certificate.IsSignedBy(Certificate.PublicKey);
+
+  Assert.AreEqual(Expected, Verified);
 end;
 
 procedure TX509Tests.TryParse_OneBitFlippedPerByte_NeverVerifiesAndNeverRaises(const FileName: string);
