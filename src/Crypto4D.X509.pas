@@ -70,7 +70,7 @@ type
     property Value: TBytes read FValue;
   end;
 
-  TX509Certificate = record
+  TX509CertificateInfo = record
   private
     const
       VersionTagNumber    = 0;
@@ -111,7 +111,7 @@ type
     function VerifyEd25519(const IssuerKey: TX509PublicKeyInfo): Boolean;
 
   public
-    class function TryParse(const Der: TBytes; out Certificate: TX509Certificate): Boolean; static;
+    class function TryParse(const Der: TBytes; out Certificate: TX509CertificateInfo): Boolean; static;
 
     function TryFindExtension(const Oid: string; out Extension: TX509Extension): Boolean;
     function IsSignedBy(const IssuerKey: TX509PublicKeyInfo): Boolean;
@@ -320,9 +320,9 @@ begin
   Result              := True;
 end;
 
-class function TX509Certificate.TryParse(const Der: TBytes; out Certificate: TX509Certificate): Boolean;
+class function TX509CertificateInfo.TryParse(const Der: TBytes; out Certificate: TX509CertificateInfo): Boolean;
 begin
-  Certificate := Default(TX509Certificate);
+  Certificate := Default(TX509CertificateInfo);
 
   var Outer := TDerReader.Create(Der);
   var CertificateElement: TDerElement;
@@ -339,7 +339,7 @@ begin
   if not HasThreeParts then
     Exit(False);
 
-  var Parsed := Default(TX509Certificate);
+  var Parsed := Default(TX509CertificateInfo);
   Parsed.FTbsCertificate := TbsElement.Encoded;
   const IsWellFormed = TX509AlgorithmIdentifier.TryParse(AlgorithmElement, Parsed.FSignatureAlgorithm) and
                        SignatureElement.TryGetBitStringBytes(Parsed.FSignature) and
@@ -351,7 +351,7 @@ begin
   Result      := True;
 end;
 
-function TX509Certificate.TryParseTbsCertificate(const Content: TBytes): Boolean;
+function TX509CertificateInfo.TryParseTbsCertificate(const Content: TBytes): Boolean;
 begin
   var Reader := TDerReader.Create(Content);
   if not TryReadVersion(Reader) then
@@ -378,7 +378,7 @@ begin
   Result := TryReadOptionalFields(Reader) and Reader.IsAtEnd;
 end;
 
-function TX509Certificate.TryReadVersion(var Reader: TDerReader): Boolean;
+function TX509CertificateInfo.TryReadVersion(var Reader: TDerReader): Boolean;
 begin
   FVersion := DefaultVersion;
 
@@ -405,7 +405,7 @@ begin
   Result   := (FVersion > DefaultVersion) and (FVersion <= HighestVersion);
 end;
 
-function TX509Certificate.TryReadNames(var Reader: TDerReader): Boolean;
+function TX509CertificateInfo.TryReadNames(var Reader: TDerReader): Boolean;
 begin
   var IssuerElement: TDerElement;
   var ValidityElement: TDerElement;
@@ -421,14 +421,14 @@ begin
   FSubject  := SubjectElement.Encoded;
 end;
 
-function TX509Certificate.TryReadOptionalFields(var Reader: TDerReader): Boolean;
+function TX509CertificateInfo.TryReadOptionalFields(var Reader: TDerReader): Boolean;
 begin
   Result := TrySkipUniqueId(Reader, IssuerIdTagNumber) and
             TrySkipUniqueId(Reader, SubjectIdTagNumber) and
             TryReadExtensions(Reader);
 end;
 
-function TX509Certificate.TrySkipUniqueId(var Reader: TDerReader; const TagNumber: Byte): Boolean;
+function TX509CertificateInfo.TrySkipUniqueId(var Reader: TDerReader; const TagNumber: Byte): Boolean;
 begin
   var NextTag: Byte;
   const UniqueIdTag = PrimitiveContext or TagNumber;
@@ -440,7 +440,7 @@ begin
   Result := (FVersion >= UniqueIdVersion) and Reader.TryRead(UniqueId) and UniqueId.HasBitStringContent;
 end;
 
-function TX509Certificate.TryReadExtensions(var Reader: TDerReader): Boolean;
+function TX509CertificateInfo.TryReadExtensions(var Reader: TDerReader): Boolean;
 begin
   FExtensions := nil;
   if Reader.IsAtEnd then
@@ -458,7 +458,7 @@ begin
   Result := Inner.TryReadOnly(TDerTag.Sequence, List) and TryParseExtensionList(List.Content);
 end;
 
-function TX509Certificate.TryParseExtensionList(const Content: TBytes): Boolean;
+function TX509CertificateInfo.TryParseExtensionList(const Content: TBytes): Boolean;
 begin
   var Reader := TDerReader.Create(Content);
   if Reader.IsAtEnd then
@@ -484,7 +484,7 @@ begin
   Result      := not HasDuplicateExtension;
 end;
 
-function TX509Certificate.HasDuplicateExtension: Boolean;
+function TX509CertificateInfo.HasDuplicateExtension: Boolean;
 begin
   var Oids: TArray<string>;
   SetLength(Oids, Length(FExtensions));
@@ -504,7 +504,7 @@ begin
   Result := False;
 end;
 
-class function TX509Certificate.SortedOids(const Oids: TArray<string>): TArray<string>;
+class function TX509CertificateInfo.SortedOids(const Oids: TArray<string>): TArray<string>;
 begin
   const Count          = Length(Oids);
   const NeedsNoSorting = (Count <= 1);
@@ -520,7 +520,7 @@ begin
   Result := MergedOids(Lower, Upper);
 end;
 
-class function TX509Certificate.MergedOids(const Lower, Upper: TArray<string>): TArray<string>;
+class function TX509CertificateInfo.MergedOids(const Lower, Upper: TArray<string>): TArray<string>;
 begin
   SetLength(Result, Length(Lower) + Length(Upper));
   var LowerIndex := 0;
@@ -545,7 +545,7 @@ begin
   end;
 end;
 
-function TX509Certificate.TryFindExtension(const Oid: string; out Extension: TX509Extension): Boolean;
+function TX509CertificateInfo.TryFindExtension(const Oid: string; out Extension: TX509Extension): Boolean;
 begin
   for var Candidate in FExtensions do
   begin
@@ -561,7 +561,7 @@ begin
   Result    := False;
 end;
 
-function TX509Certificate.IsSignedBy(const IssuerKey: TX509PublicKeyInfo): Boolean;
+function TX509CertificateInfo.IsSignedBy(const IssuerKey: TX509PublicKeyInfo): Boolean;
 begin
   const AlgorithmsAgree = FSignatureAlgorithm.IsSameAs(FTbsSignatureAlgorithm);
   if not AlgorithmsAgree then
@@ -582,7 +582,7 @@ begin
     Result := False;
 end;
 
-function TX509Certificate.VerifyEcdsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
+function TX509CertificateInfo.VerifyEcdsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
 begin
   var Key: TEcdsaP256PublicKey;
   const CanVerify = FSignatureAlgorithm.HasNoParameters and IssuerKey.TryGetEcdsaP256Key(Key);
@@ -592,7 +592,7 @@ begin
   Result := TEcdsaP256.VerifyDer(Key, FTbsCertificate, FSignature);
 end;
 
-function TX509Certificate.VerifyRsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
+function TX509CertificateInfo.VerifyRsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
 begin
   var Key: TRsaPublicKey;
   const CanVerify = FSignatureAlgorithm.HasNullOrNoParameters and IssuerKey.TryGetRsaKey(Key);
@@ -602,7 +602,7 @@ begin
   Result := TRsaPkcs1Sha256.Verify(Key, FTbsCertificate, FSignature);
 end;
 
-function TX509Certificate.VerifyEd25519(const IssuerKey: TX509PublicKeyInfo): Boolean;
+function TX509CertificateInfo.VerifyEd25519(const IssuerKey: TX509PublicKeyInfo): Boolean;
 begin
   var Key: TBytes;
   const CanVerify = FSignatureAlgorithm.HasNoParameters and IssuerKey.TryGetEd25519Key(Key);

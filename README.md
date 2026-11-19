@@ -16,7 +16,7 @@ for yourself whether that is enough for your use.
 | ECDSA on P-256 with SHA-256 (ES256) | `TEcdsaP256` | Signature as ASN.1 DER or as raw `r \|\| s` (64 bytes) |
 | RSA PKCS#1 v1.5 with SHA-256 (RS256) | `TRsaPkcs1Sha256` | Modulus from 2048 up to 16384 bits, odd exponent from 3 up to 2^64 - 1 |
 | Ed25519 (RFC 8032) | `TEd25519` | Strict variant, see below |
-| X.509 certificates | `TX509Certificate` | Parsing, and checking the signature with a given issuer key |
+| X.509 certificates | `TX509CertificateInfo` | Parsing, and checking the signature with a given issuer key |
 
 Supporting units: `Crypto4D.BigInteger` (non-negative integers of any size), `Crypto4D.Der` (a strict DER
 reader) and `Crypto4D.X509`.
@@ -124,10 +124,10 @@ uses
 
 function IsIssuedBy(const CertificateDer, IssuerDer: TBytes): Boolean;
 begin
-  var Certificate: TX509Certificate;
-  var Issuer: TX509Certificate;
-  const BothParse = TX509Certificate.TryParse(CertificateDer, Certificate) and
-                    TX509Certificate.TryParse(IssuerDer, Issuer);
+  var Certificate: TX509CertificateInfo;
+  var Issuer: TX509CertificateInfo;
+  const BothParse = TX509CertificateInfo.TryParse(CertificateDer, Certificate) and
+                    TX509CertificateInfo.TryParse(IssuerDer, Issuer);
   if not BothParse then
     Exit(False);
 

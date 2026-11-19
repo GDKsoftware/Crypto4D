@@ -45,7 +45,7 @@ type
       FManifest: TJSONObject;
 
     function Load(const FileName: string): TBytes;
-    function Parse(const FileName: string): TX509Certificate;
+    function Parse(const FileName: string): TX509CertificateInfo;
     function ManifestEntry(const FileName: string): TJSONObject;
     function Bytes(const Hex: string): TBytes;
     function BitString(const Content: TBytes): TBytes;
@@ -192,10 +192,10 @@ begin
   Result := TTestSupport.LoadBytes(Folder + FileName);
 end;
 
-function TX509Tests.Parse(const FileName: string): TX509Certificate;
+function TX509Tests.Parse(const FileName: string): TX509CertificateInfo;
 begin
   const Der    = Load(FileName);
-  const Parsed = TX509Certificate.TryParse(Der, Result);
+  const Parsed = TX509CertificateInfo.TryParse(Der, Result);
   Assert.IsTrue(Parsed, FileName);
 end;
 
@@ -262,8 +262,8 @@ end;
 
 function TX509Tests.Parses(const Der: TBytes): Boolean;
 begin
-  var Certificate: TX509Certificate;
-  Result := TX509Certificate.TryParse(Der, Certificate);
+  var Certificate: TX509CertificateInfo;
+  Result := TX509CertificateInfo.TryParse(Der, Certificate);
 end;
 
 procedure TX509Tests.TryParse_CraftedCertificateWithExtension_ReturnsTrue;
@@ -271,9 +271,9 @@ begin
   const SingleExtension = Extension(1);
   const Fields          = ExtensionList(SingleExtension);
   const Der             = CraftedCertificate(VersionThreeHex, SerialOneHex, Fields);
-  var Certificate: TX509Certificate;
+  var Certificate: TX509CertificateInfo;
 
-  const Parsed = TX509Certificate.TryParse(Der, Certificate);
+  const Parsed = TX509CertificateInfo.TryParse(Der, Certificate);
 
   Assert.IsTrue(Parsed);
   Assert.AreEqual(3, Certificate.Version);
@@ -366,10 +366,10 @@ begin
   end;
   const Fields = ExtensionList(Extensions);
   const Der    = CraftedCertificate(VersionThreeHex, SerialOneHex, Fields);
-  var Certificate: TX509Certificate;
+  var Certificate: TX509CertificateInfo;
 
   const Watch     = TStopwatch.StartNew;
-  const Parsed    = TX509Certificate.TryParse(Der, Certificate);
+  const Parsed    = TX509CertificateInfo.TryParse(Der, Certificate);
   const ElapsedMs = Watch.ElapsedMilliseconds;
 
   Assert.IsTrue(Parsed);
@@ -440,8 +440,8 @@ begin
     const BitIndex = ByteIndex * 8 + (ByteIndex mod 8);
     const Damaged  = TTestSupport.FlipBit(Original, BitIndex);
 
-    var Certificate: TX509Certificate;
-    const Parsed = TX509Certificate.TryParse(Damaged, Certificate);
+    var Certificate: TX509CertificateInfo;
+    const Parsed = TX509CertificateInfo.TryParse(Damaged, Certificate);
     if Parsed then
     begin
       Inc(ParsedCount);
@@ -465,9 +465,9 @@ begin
   for var KeptLength := 0 to Length(Original) - 1 do
   begin
     const Truncated = Copy(Original, 0, KeptLength);
-    var Certificate: TX509Certificate;
+    var Certificate: TX509CertificateInfo;
 
-    const Parsed = TX509Certificate.TryParse(Truncated, Certificate);
+    const Parsed = TX509CertificateInfo.TryParse(Truncated, Certificate);
 
     Assert.IsFalse(Parsed, Format('length %d', [KeptLength]));
   end;
@@ -476,18 +476,18 @@ end;
 procedure TX509Tests.TryParse_TrailingByte_ReturnsFalse;
 begin
   const Extended = Load(P256File) + TBytes.Create(0);
-  var Certificate: TX509Certificate;
+  var Certificate: TX509CertificateInfo;
 
-  const Parsed = TX509Certificate.TryParse(Extended, Certificate);
+  const Parsed = TX509CertificateInfo.TryParse(Extended, Certificate);
 
   Assert.IsFalse(Parsed);
 end;
 
 procedure TX509Tests.TryParse_Empty_ReturnsFalse;
 begin
-  var Certificate: TX509Certificate;
+  var Certificate: TX509CertificateInfo;
 
-  const Parsed = TX509Certificate.TryParse(nil, Certificate);
+  const Parsed = TX509CertificateInfo.TryParse(nil, Certificate);
 
   Assert.IsFalse(Parsed);
 end;
