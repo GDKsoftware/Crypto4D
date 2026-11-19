@@ -1,0 +1,17 @@
+tests/bin/
+tests/dcu/
+tests/tools/bin/
+tests/tools/dcu/
+__history/
+__recovery/
+*.dcu
+*.identcache
+*.local
+*.stat
+*.tvsconfig
+*.dsk
+*.rsm
+*.map
+*.drc
+*.~*
+dunitx-results.xml

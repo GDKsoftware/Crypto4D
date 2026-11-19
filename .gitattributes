@@ -1,0 +1,6 @@
+* text=auto
+*.pas text eol=crlf
+*.dpr text eol=crlf
+*.dproj text eol=crlf
+*.res binary
+tests/vectors/** -text
