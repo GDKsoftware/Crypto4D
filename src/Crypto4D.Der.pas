@@ -6,6 +6,9 @@ uses
   System.SysUtils;
 
 type
+  /// <summary>
+  ///   Identifier octets of the ASN.1 types that Crypto4D reads.
+  /// </summary>
   TDerTag = record
   public
     const
@@ -20,6 +23,9 @@ type
       Constructed     = $20;
   end;
 
+  /// <summary>
+  ///   One DER element: its tag, its content and its complete encoding.
+  /// </summary>
   TDerElement = record
   private
     FTag: Byte;
@@ -31,22 +37,96 @@ type
     function HasMinimalIntegerContent: Boolean;
 
   public
+    /// <summary>
+    ///   Creates an element from parts that were already read. The arrays are not copied.
+    /// </summary>
+    /// <param name="Tag">Identifier octet.</param>
+    /// <param name="Content">Content octets, without tag and length.</param>
+    /// <param name="Encoded">Complete encoding: tag, length and content.</param>
     class function Create(const Tag: Byte; const Content, Encoded: TBytes): TDerElement; static;
 
+    /// <summary>
+    ///   Tells whether the element has a constructed context-specific tag.
+    /// </summary>
+    /// <param name="TagNumber">Tag number from 0 up to 30, as in [0] or [3].</param>
+    /// <returns>True when the tag is the constructed context-specific tag with that number.</returns>
     function IsContextSpecific(const TagNumber: Byte): Boolean;
+
+    /// <summary>
+    ///   Returns the content of an INTEGER.
+    /// </summary>
+    /// <param name="TwosComplement">Receives the content: the value in two's complement, most significant byte
+    ///   first. It can be negative.</param>
+    /// <returns>False when the tag is not INTEGER, the content is empty or the encoding is not the shortest
+    ///   one.</returns>
     function TryGetInteger(out TwosComplement: TBytes): Boolean;
+
+    /// <summary>
+    ///   Returns the content of an INTEGER that is zero or positive.
+    /// </summary>
+    /// <param name="Magnitude">Receives the value as big-endian bytes. A leading zero byte is present when the
+    ///   encoding needs one to keep the value positive.</param>
+    /// <returns>False when TryGetInteger would return False or the value is negative.</returns>
     function TryGetUnsignedInteger(out Magnitude: TBytes): Boolean;
+
+    /// <summary>
+    ///   Decodes an OBJECT IDENTIFIER.
+    /// </summary>
+    /// <param name="DottedText">Receives the identifier in dotted notation, such as 1.2.840.10045.2.1.</param>
+    /// <returns>False when the tag is not OBJECT IDENTIFIER, the content is empty, an arc is not in its shortest
+    ///   encoding or an arc is longer than 9 bytes.</returns>
     function TryGetObjectId(out DottedText: string): Boolean;
+
+    /// <summary>
+    ///   Returns the bytes of a BIT STRING that holds whole bytes.
+    /// </summary>
+    /// <param name="Bytes">Receives the content without the leading count of unused bits.</param>
+    /// <returns>False when the tag is not BIT STRING, the content is empty or the count of unused bits is not
+    ///   zero.</returns>
     function TryGetBitStringBytes(out Bytes: TBytes): Boolean;
+
+    /// <summary>
+    ///   Tells whether the content is a valid DER encoding of a bit string, whatever the tag. Use it for an
+    ///   implicitly tagged BIT STRING.
+    /// </summary>
+    /// <returns>False when the content is empty, the count of unused bits is above 7, unused bits are announced
+    ///   without data, or an unused bit is set.</returns>
     function HasBitStringContent: Boolean;
+
+    /// <summary>
+    ///   Decodes a BOOLEAN.
+    /// </summary>
+    /// <param name="Value">Receives True for the content FF and False otherwise.</param>
+    /// <returns>False when the tag is not BOOLEAN or the content is not exactly one byte with the value 00 or
+    ///   FF.</returns>
     function TryGetBoolean(out Value: Boolean): Boolean;
+
+    /// <summary>
+    ///   True when the element is a NULL without content.
+    /// </summary>
     function IsNull: Boolean;
 
+    /// <summary>
+    ///   Identifier octet of the element.
+    /// </summary>
     property Tag: Byte read FTag;
+
+    /// <summary>
+    ///   Content octets, without tag and length.
+    /// </summary>
     property Content: TBytes read FContent;
+
+    /// <summary>
+    ///   Complete encoding of the element: tag, length and content.
+    /// </summary>
     property Encoded: TBytes read FEncoded;
   end;
 
+  /// <summary>
+  ///   Reads the DER elements in a byte array one after another. The reader is strict: it accepts single-byte tags
+  ///   only and a definite length in the shortest encoding of at most four length octets. It does not look inside
+  ///   the content of an element; create another reader on the content for that.
+  /// </summary>
   TDerReader = record
   private
     const
@@ -63,12 +143,48 @@ type
     function TryReadLength(const LengthPosition: Integer; out ContentLength: Int64; out ContentPosition: Integer): Boolean;
 
   public
+    /// <summary>
+    ///   Creates a reader at the first byte of Data. The array is not copied.
+    /// </summary>
+    /// <param name="Data">Bytes that hold zero or more DER elements.</param>
     class function Create(const Data: TBytes): TDerReader; static;
 
+    /// <summary>
+    ///   True when every byte has been read.
+    /// </summary>
     function IsAtEnd: Boolean;
+
+    /// <summary>
+    ///   Returns the tag of the next element without reading it.
+    /// </summary>
+    /// <param name="Tag">Receives the identifier octet, or 0 at the end of the data.</param>
+    /// <returns>False at the end of the data.</returns>
     function TryPeekTag(out Tag: Byte): Boolean;
+
+    /// <summary>
+    ///   Reads the next element and moves past it.
+    /// </summary>
+    /// <param name="Element">Receives the element. Its content and encoding are copies.</param>
+    /// <returns>False at the end of the data, for a multi-byte tag, for a length that is indefinite, not in its
+    ///   shortest encoding or longer than four octets, and when the data ends before the content does. The position
+    ///   does not change then.</returns>
     function TryRead(out Element: TDerElement): Boolean;
+
+    /// <summary>
+    ///   Reads the next element when it has the expected tag.
+    /// </summary>
+    /// <param name="ExpectedTag">Identifier octet the element must have.</param>
+    /// <param name="Element">Receives the element.</param>
+    /// <returns>False when the next element has another tag or TryRead would return False. The position does not
+    ///   change then.</returns>
     function TryReadTagged(const ExpectedTag: Byte; out Element: TDerElement): Boolean;
+
+    /// <summary>
+    ///   Reads the next element when it has the expected tag and is the last one in the data.
+    /// </summary>
+    /// <param name="ExpectedTag">Identifier octet the element must have.</param>
+    /// <param name="Element">Receives the element.</param>
+    /// <returns>False when TryReadTagged would return False or bytes follow the element.</returns>
     function TryReadOnly(const ExpectedTag: Byte; out Element: TDerElement): Boolean;
   end;
 

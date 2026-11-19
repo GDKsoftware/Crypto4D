@@ -8,6 +8,9 @@ uses
   Crypto4D.PrimeField;
 
 type
+  /// <summary>
+  ///   A point on edwards25519 in extended coordinates: the affine point is (X / Z, Y / Z) and T is X * Y / Z.
+  /// </summary>
   TEdwardsPoint = record
   private
     FX: TBigInteger;
@@ -16,6 +19,9 @@ type
     FT: TBigInteger;
 
   public
+    /// <summary>
+    ///   Creates a point from extended coordinates. The coordinates are not checked.
+    /// </summary>
     class function Create(const X, Y, Z, T: TBigInteger): TEdwardsPoint; static;
 
     property X: TBigInteger read FX;
@@ -24,6 +30,10 @@ type
     property T: TBigInteger read FT;
   end;
 
+  /// <summary>
+  ///   The twisted Edwards curve edwards25519 of RFC 8032, with the point arithmetic that signature verification
+  ///   needs. Not constant time.
+  /// </summary>
   TEdwards25519Curve = record
   private
     const
@@ -57,21 +67,73 @@ type
     const
       EncodedSize = 32;
 
+    /// <summary>
+    ///   Creates the curve with its parameters.
+    /// </summary>
     class function Create: TEdwards25519Curve; static;
+
+    /// <summary>
+    ///   Reads an unsigned integer from little-endian bytes of any length.
+    /// </summary>
     class function LittleEndianToInteger(const Bytes: TBytes): TBigInteger; static;
 
+    /// <summary>
+    ///   Returns the neutral point (0, 1).
+    /// </summary>
     function Identity: TEdwardsPoint;
+
+    /// <summary>
+    ///   Decodes a point as RFC 8032 section 5.1.3 describes.
+    /// </summary>
+    /// <param name="Encoded">32 bytes: y in little-endian with the sign of x in the top bit.</param>
+    /// <param name="Point">Receives the point, or the neutral point when decoding fails.</param>
+    /// <returns>False when Encoded is not 32 bytes, y is not below the field prime, no x exists for this y, or x is
+    ///   zero while the sign bit is set.</returns>
     function TryDecode(const Encoded: TBytes; out Point: TEdwardsPoint): Boolean;
+
+    /// <summary>
+    ///   Encodes a point as 32 bytes: y in little-endian with the sign of x in the top bit.
+    /// </summary>
     function Encode(const Point: TEdwardsPoint): TBytes;
+
+    /// <summary>
+    ///   Adds two points on the curve. The formula is complete: it holds for every pair of points.
+    /// </summary>
     function Add(const Left, Right: TEdwardsPoint): TEdwardsPoint;
+
+    /// <summary>
+    ///   Adds a point on the curve to itself.
+    /// </summary>
     function Double(const Point: TEdwardsPoint): TEdwardsPoint;
+
+    /// <summary>
+    ///   Returns the opposite point (-x, y).
+    /// </summary>
     function Negate(const Point: TEdwardsPoint): TEdwardsPoint;
+
+    /// <summary>
+    ///   Computes BaseScalar * B + PointScalar * Point, where B is the base point.
+    /// </summary>
+    /// <param name="BaseScalar">Scalar for the base point; only its lowest 253 bits are used.</param>
+    /// <param name="PointScalar">Scalar for Point; only its lowest 253 bits are used.</param>
+    /// <param name="Point">A point on the curve.</param>
     function MultiplyTwo(const BaseScalar: TBigInteger;
                          const PointScalar: TBigInteger;
                          const Point: TEdwardsPoint): TEdwardsPoint;
+
+    /// <summary>
+    ///   True when the point is the neutral point.
+    /// </summary>
     function IsIdentity(const Point: TEdwardsPoint): Boolean;
+
+    /// <summary>
+    ///   True when 8 times the point is the neutral point, so the point is one of the eight points of small order.
+    /// </summary>
     function HasSmallOrder(const Point: TEdwardsPoint): Boolean;
 
+    /// <summary>
+    ///   Order L of the base point.
+    /// </summary>
     property Order: TBigInteger read FOrder;
   end;
 

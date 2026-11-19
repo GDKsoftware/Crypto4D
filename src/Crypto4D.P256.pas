@@ -7,6 +7,10 @@ uses
   Crypto4D.PrimeField;
 
 type
+  /// <summary>
+  ///   A point on the curve P-256 in Jacobian coordinates: the affine point is (X / Z^2, Y / Z^3). Z is zero for
+  ///   the point at infinity.
+  /// </summary>
   TP256Point = record
   private
     FX: TBigInteger;
@@ -14,9 +18,19 @@ type
     FZ: TBigInteger;
 
   public
+    /// <summary>
+    ///   Creates a point from Jacobian coordinates. The coordinates are not checked.
+    /// </summary>
     class function Create(const X, Y, Z: TBigInteger): TP256Point; static;
+
+    /// <summary>
+    ///   Returns the point at infinity.
+    /// </summary>
     class function Infinity: TP256Point; static;
 
+    /// <summary>
+    ///   True when the point is the point at infinity.
+    /// </summary>
     function IsInfinity: Boolean;
 
     property X: TBigInteger read FX;
@@ -24,6 +38,10 @@ type
     property Z: TBigInteger read FZ;
   end;
 
+  /// <summary>
+  ///   The NIST curve P-256 (secp256r1), with the point arithmetic that signature verification needs. Not constant
+  ///   time.
+  /// </summary>
   TP256Curve = record
   private
     const
@@ -46,18 +64,62 @@ type
                         const First, Second, Both: TP256Point): TP256Point;
 
   public
+    /// <summary>
+    ///   Creates the curve with its parameters.
+    /// </summary>
     class function Create: TP256Curve; static;
 
+    /// <summary>
+    ///   Tells whether affine coordinates are a point on the curve.
+    /// </summary>
+    /// <param name="X">Affine x coordinate.</param>
+    /// <param name="Y">Affine y coordinate.</param>
+    /// <returns>False when a coordinate is not below the field prime or the curve equation does not hold.</returns>
     function IsOnCurve(const X, Y: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   Creates a point from affine coordinates. The point is not checked to be on the curve; use IsOnCurve first.
+    /// </summary>
     function AffinePoint(const X, Y: TBigInteger): TP256Point;
+
+    /// <summary>
+    ///   Computes GeneratorScalar * G + PointScalar * Point, where G is the generator.
+    /// </summary>
+    /// <param name="GeneratorScalar">Scalar for the generator; only its lowest 256 bits are used.</param>
+    /// <param name="PointScalar">Scalar for Point; only its lowest 256 bits are used.</param>
+    /// <param name="Point">A point on the curve.</param>
+    /// <returns>The sum, which can be the point at infinity.</returns>
     function MultiplyTwo(const GeneratorScalar: TBigInteger;
                          const PointScalar: TBigInteger;
                          const Point: TP256Point): TP256Point;
+
+    /// <summary>
+    ///   Adds two points on the curve. Either point may be the point at infinity, and the points may be equal or
+    ///   opposite.
+    /// </summary>
     function Add(const Left, Right: TP256Point): TP256Point;
+
+    /// <summary>
+    ///   Adds a point on the curve to itself.
+    /// </summary>
     function Double(const Point: TP256Point): TP256Point;
+
+    /// <summary>
+    ///   Returns the affine x coordinate of a point.
+    /// </summary>
+    /// <param name="Point">A point on the curve.</param>
+    /// <param name="X">Receives the x coordinate, or zero for the point at infinity.</param>
+    /// <returns>False for the point at infinity.</returns>
     function TryGetAffineX(const Point: TP256Point; out X: TBigInteger): Boolean;
 
+    /// <summary>
+    ///   Order n of the generator.
+    /// </summary>
     property Order: TBigInteger read FOrder;
+
+    /// <summary>
+    ///   The generator G of the curve.
+    /// </summary>
     property Generator: TP256Point read FGenerator;
   end;
 

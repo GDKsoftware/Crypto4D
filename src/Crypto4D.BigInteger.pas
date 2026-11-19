@@ -6,6 +6,11 @@ uses
   System.SysUtils;
 
 type
+  /// <summary>
+  ///   Non-negative integer of any size. A value never changes: every operation returns a new value. A variable
+  ///   that was never assigned is zero. The arithmetic does not run in constant time, so do not use it for secret
+  ///   values.
+  /// </summary>
   TBigInteger = record
   private
     const
@@ -48,39 +53,210 @@ type
     class procedure GuardModulus(const Modulus: TBigInteger); static;
 
   public
+    /// <summary>
+    ///   Returns the value 0.
+    /// </summary>
     class function Zero: TBigInteger; static;
+
+    /// <summary>
+    ///   Returns the value 1.
+    /// </summary>
     class function One: TBigInteger; static;
+
+    /// <summary>
+    ///   Converts an unsigned 64 bit integer.
+    /// </summary>
+    /// <param name="Value">Value to convert.</param>
     class function FromUInt64(const Value: UInt64): TBigInteger; static;
+
+    /// <summary>
+    ///   Reads an unsigned integer from big-endian bytes.
+    /// </summary>
+    /// <param name="BigEndianBytes">Most significant byte first, any length. Leading zero bytes are ignored and an
+    ///   empty array is zero.</param>
     class function FromBytes(const BigEndianBytes: TBytes): TBigInteger; static;
+
+    /// <summary>
+    ///   Reads an unsigned integer from hexadecimal text.
+    /// </summary>
+    /// <param name="Hex">Hexadecimal digits in upper or lower case, without prefix or separators. An odd number of
+    ///   digits is allowed and an empty string is zero.</param>
+    /// <exception cref="ECrypto4DArgumentError">Hex holds a character that is not a hexadecimal digit.</exception>
     class function FromHex(const Hex: string): TBigInteger; static;
+
+    /// <summary>
+    ///   Compares two values.
+    /// </summary>
+    /// <param name="Left">First value.</param>
+    /// <param name="Right">Second value.</param>
+    /// <returns>-1 when Left is smaller than Right, 0 when they are equal and 1 when Left is larger.</returns>
     class function Compare(const Left, Right: TBigInteger): Integer; static;
+
+    /// <summary>
+    ///   Divides and returns quotient and remainder in one call.
+    /// </summary>
+    /// <param name="Dividend">Value to divide.</param>
+    /// <param name="Divisor">Value to divide by; must not be zero.</param>
+    /// <param name="Quotient">Receives Dividend div Divisor.</param>
+    /// <param name="Remainder">Receives Dividend mod Divisor.</param>
+    /// <exception cref="ECrypto4DArithmeticError">Divisor is zero.</exception>
     class procedure DivMod(const Dividend, Divisor: TBigInteger; out Quotient, Remainder: TBigInteger); static;
 
+    /// <summary>
+    ///   Adds two values.
+    /// </summary>
     class operator Add(const Left, Right: TBigInteger): TBigInteger;
+
+    /// <summary>
+    ///   Subtracts Right from Left.
+    /// </summary>
+    /// <exception cref="ECrypto4DArithmeticError">Right is larger than Left, so the result would be
+    ///   negative.</exception>
     class operator Subtract(const Left, Right: TBigInteger): TBigInteger;
+
+    /// <summary>
+    ///   Multiplies two values.
+    /// </summary>
     class operator Multiply(const Left, Right: TBigInteger): TBigInteger;
+
+    /// <summary>
+    ///   Divides Left by Right and drops the remainder.
+    /// </summary>
+    /// <exception cref="ECrypto4DArithmeticError">Right is zero.</exception>
     class operator IntDivide(const Left, Right: TBigInteger): TBigInteger;
+
+    /// <summary>
+    ///   Returns the remainder of Left divided by Right.
+    /// </summary>
+    /// <exception cref="ECrypto4DArithmeticError">Right is zero.</exception>
     class operator Modulus(const Left, Right: TBigInteger): TBigInteger;
+
+    /// <summary>
+    ///   Shifts a value left, which multiplies it by 2 to the power BitCount.
+    /// </summary>
+    /// <param name="Value">Value to shift.</param>
+    /// <param name="BitCount">Number of bits, zero or more.</param>
+    /// <exception cref="ECrypto4DArgumentError">BitCount is negative.</exception>
     class operator LeftShift(const Value: TBigInteger; const BitCount: Integer): TBigInteger;
+
+    /// <summary>
+    ///   Shifts a value right, which divides it by 2 to the power BitCount and drops the remainder.
+    /// </summary>
+    /// <param name="Value">Value to shift.</param>
+    /// <param name="BitCount">Number of bits, zero or more. A count at or beyond the bit length gives zero.</param>
+    /// <exception cref="ECrypto4DArgumentError">BitCount is negative.</exception>
     class operator RightShift(const Value: TBigInteger; const BitCount: Integer): TBigInteger;
+
+    /// <summary>
+    ///   True when both values are equal.
+    /// </summary>
     class operator Equal(const Left, Right: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   True when the values differ.
+    /// </summary>
     class operator NotEqual(const Left, Right: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   True when Left is smaller than Right.
+    /// </summary>
     class operator LessThan(const Left, Right: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   True when Left is smaller than or equal to Right.
+    /// </summary>
     class operator LessThanOrEqual(const Left, Right: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   True when Left is larger than Right.
+    /// </summary>
     class operator GreaterThan(const Left, Right: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   True when Left is larger than or equal to Right.
+    /// </summary>
     class operator GreaterThanOrEqual(const Left, Right: TBigInteger): Boolean;
 
+    /// <summary>
+    ///   True when the value is 0.
+    /// </summary>
     function IsZero: Boolean;
+
+    /// <summary>
+    ///   True when the value is 1.
+    /// </summary>
     function IsOne: Boolean;
+
+    /// <summary>
+    ///   True when the lowest bit is set.
+    /// </summary>
     function IsOdd: Boolean;
+
+    /// <summary>
+    ///   Returns the number of bits needed to write the value. Zero has a bit length of 0.
+    /// </summary>
     function BitLength: Integer;
+
+    /// <summary>
+    ///   Returns the number of bytes needed to write the value. Zero has a byte length of 0.
+    /// </summary>
     function ByteLength: Integer;
+
+    /// <summary>
+    ///   Tells whether one bit of the value is set.
+    /// </summary>
+    /// <param name="BitIndex">Bit number, where bit 0 is the least significant bit.</param>
+    /// <returns>True when the bit is set. False for an index beyond the bit length.</returns>
+    /// <exception cref="ECrypto4DArgumentError">BitIndex is negative.</exception>
     function TestBit(const BitIndex: Integer): Boolean;
+
+    /// <summary>
+    ///   Writes the value as big-endian bytes without leading zero bytes.
+    /// </summary>
+    /// <returns>The shortest big-endian encoding. Zero gives a single zero byte.</returns>
     function ToBytes: TBytes;
+
+    /// <summary>
+    ///   Writes the value as big-endian bytes, padded with zero bytes on the left to a fixed length.
+    /// </summary>
+    /// <param name="ByteCount">Length of the result in bytes.</param>
+    /// <returns>ByteCount bytes, most significant byte first.</returns>
+    /// <exception cref="ECrypto4DArgumentError">The value needs more than ByteCount bytes.</exception>
     function ToFixedBytes(const ByteCount: Integer): TBytes;
+
+    /// <summary>
+    ///   Writes the value as lower case hexadecimal text.
+    /// </summary>
+    /// <returns>Two digits for every byte of ToBytes, so the number of digits is even. Zero gives 00.</returns>
     function ToHex: string;
+
+    /// <summary>
+    ///   Raises the value to a power, reduced by a modulus.
+    /// </summary>
+    /// <param name="Exponent">Power to raise to; zero or more.</param>
+    /// <param name="Modulus">Modulus; must not be zero.</param>
+    /// <returns>The value to the power Exponent, mod Modulus. The result is 0 when Modulus is 1.</returns>
+    /// <exception cref="ECrypto4DArithmeticError">Modulus is zero.</exception>
     function ModPow(const Exponent, Modulus: TBigInteger): TBigInteger;
+
+    /// <summary>
+    ///   Looks for the inverse of the value for a modulus.
+    /// </summary>
+    /// <param name="Modulus">Modulus; must not be zero.</param>
+    /// <param name="Inverse">Receives the number below Modulus that gives 1 when multiplied by the value, mod
+    ///   Modulus. Zero when there is no inverse.</param>
+    /// <returns>True when the inverse exists, which is when the value and Modulus share no factor. False
+    ///   otherwise.</returns>
+    /// <exception cref="ECrypto4DArithmeticError">Modulus is zero.</exception>
     function TryModInverse(const Modulus: TBigInteger; out Inverse: TBigInteger): Boolean;
+
+    /// <summary>
+    ///   Returns the inverse of the value for a modulus.
+    /// </summary>
+    /// <param name="Modulus">Modulus; must not be zero.</param>
+    /// <returns>The number below Modulus that gives 1 when multiplied by the value, mod Modulus.</returns>
+    /// <exception cref="ECrypto4DArithmeticError">Modulus is zero, or the value has no inverse because it shares a
+    ///   factor with Modulus.</exception>
     function ModInverse(const Modulus: TBigInteger): TBigInteger;
   end;
 

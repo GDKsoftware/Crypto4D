@@ -6,8 +6,18 @@ uses
   System.SysUtils;
 
 type
+  /// <summary>
+  ///   Helpers for byte arrays.
+  /// </summary>
   TByteArrays = class
   public
+    /// <summary>
+    ///   Compares two byte arrays. All bytes are compared; the loop does not stop at the first difference.
+    /// </summary>
+    /// <param name="Left">First array; may be empty.</param>
+    /// <param name="Right">Second array; may be empty.</param>
+    /// <returns>True when both arrays have the same length and the same content. False when the lengths
+    ///   differ.</returns>
     class function AreEqual(const Left, Right: TBytes): Boolean; static;
   end;
 

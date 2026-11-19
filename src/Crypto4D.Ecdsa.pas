@@ -7,6 +7,10 @@ uses
   Crypto4D.BigInteger;
 
 type
+  /// <summary>
+  ///   An ECDSA public key on P-256: the affine coordinates of a point. Creating a key checks the lengths only;
+  ///   whether the point is on the curve is checked when a signature is verified.
+  /// </summary>
   TEcdsaP256PublicKey = record
   private
     FX: TBytes;
@@ -18,14 +22,40 @@ type
       UncompressedPointSize = 65;
       UncompressedPrefix    = $04;
 
+    /// <summary>
+    ///   Creates a key from its two coordinates.
+    /// </summary>
+    /// <param name="X">The x coordinate, 32 bytes big-endian.</param>
+    /// <param name="Y">The y coordinate, 32 bytes big-endian.</param>
+    /// <exception cref="ECrypto4DArgumentError">X or Y is not exactly 32 bytes.</exception>
     class function FromCoordinates(const X, Y: TBytes): TEcdsaP256PublicKey; static;
+
+    /// <summary>
+    ///   Creates a key from an uncompressed point.
+    /// </summary>
+    /// <param name="Point">65 bytes: the byte 04 followed by X and Y of 32 bytes each.</param>
+    /// <exception cref="ECrypto4DArgumentError">Point is not 65 bytes or does not start with 04.</exception>
     class function FromUncompressedPoint(const Point: TBytes): TEcdsaP256PublicKey; static;
+
+    /// <summary>
+    ///   True when Point is 65 bytes and starts with 04.
+    /// </summary>
     class function IsUncompressedPoint(const Point: TBytes): Boolean; static;
 
+    /// <summary>
+    ///   The x coordinate, 32 bytes big-endian.
+    /// </summary>
     property X: TBytes read FX;
+
+    /// <summary>
+    ///   The y coordinate, 32 bytes big-endian.
+    /// </summary>
     property Y: TBytes read FY;
   end;
 
+  /// <summary>
+  ///   Verifies ECDSA signatures on P-256 with SHA-256 (ES256).
+  /// </summary>
   TEcdsaP256 = class
   private
     class procedure GuardPublicKey(const PublicKey: TEcdsaP256PublicKey); static;
@@ -38,7 +68,30 @@ type
     const
       RawSignatureSize = 64;
 
+    /// <summary>
+    ///   Verifies a signature in ASN.1 DER form.
+    /// </summary>
+    /// <param name="PublicKey">Key of the signer.</param>
+    /// <param name="Message">The signed message itself, not its digest; may be empty.</param>
+    /// <param name="Signature">DER encoding of SEQUENCE { r INTEGER, s INTEGER }.</param>
+    /// <returns>True when the signature is valid. False when Signature is not strict DER, r or s is outside the
+    ///   range from 1 up to and including n - 1, the key is not a point on the curve, or the signature does not
+    ///   match. A high s is accepted.</returns>
+    /// <exception cref="ECrypto4DArgumentError">A coordinate of PublicKey is not 32 bytes, as with a key that was
+    ///   never assigned.</exception>
     class function VerifyDer(const PublicKey: TEcdsaP256PublicKey; const Message, Signature: TBytes): Boolean; static;
+
+    /// <summary>
+    ///   Verifies a signature in the fixed-length form r || s (IEEE P1363, as used by JWS).
+    /// </summary>
+    /// <param name="PublicKey">Key of the signer.</param>
+    /// <param name="Message">The signed message itself, not its digest; may be empty.</param>
+    /// <param name="Signature">64 bytes: r and s as 32 bytes big-endian each.</param>
+    /// <returns>True when the signature is valid. False when Signature is not 64 bytes, r or s is outside the range
+    ///   from 1 up to and including n - 1, the key is not a point on the curve, or the signature does not match. A
+    ///   high s is accepted.</returns>
+    /// <exception cref="ECrypto4DArgumentError">A coordinate of PublicKey is not 32 bytes, as with a key that was
+    ///   never assigned.</exception>
     class function VerifyRaw(const PublicKey: TEcdsaP256PublicKey; const Message, Signature: TBytes): Boolean; static;
   end;
 

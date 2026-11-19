@@ -7,6 +7,9 @@ uses
   System.Hash;
 
 type
+  /// <summary>
+  ///   SHA-2 digests, computed with the hash implementation of the Delphi RTL.
+  /// </summary>
   TCryptoHash = class
   private
     class function Digest(const Message: TBytes; const Version: THashSHA2.TSHA2Version): TBytes; static;
@@ -16,7 +19,18 @@ type
       Sha256Size = 32;
       Sha512Size = 64;
 
+    /// <summary>
+    ///   Computes the SHA-256 digest of a message.
+    /// </summary>
+    /// <param name="Message">Bytes to hash; may be empty.</param>
+    /// <returns>The digest, 32 bytes.</returns>
     class function Sha256(const Message: TBytes): TBytes; static;
+
+    /// <summary>
+    ///   Computes the SHA-512 digest of a message.
+    /// </summary>
+    /// <param name="Message">Bytes to hash; may be empty.</param>
+    /// <returns>The digest, 64 bytes.</returns>
     class function Sha512(const Message: TBytes): TBytes; static;
   end;
 

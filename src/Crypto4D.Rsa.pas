@@ -6,6 +6,9 @@ uses
   System.SysUtils;
 
 type
+  /// <summary>
+  ///   An RSA public key: modulus and public exponent.
+  /// </summary>
   TRsaPublicKey = record
   private
     FModulus: TBytes;
@@ -18,16 +21,53 @@ type
       MinimumExponent     = 3;
       MaximumExponentBits = 64;
 
+    /// <summary>
+    ///   Creates a key and checks its limits.
+    /// </summary>
+    /// <param name="Modulus">The modulus n as big-endian bytes, from 2048 up to 16384 bits. Leading zero bytes are
+    ///   allowed.</param>
+    /// <param name="Exponent">The public exponent e as big-endian bytes: odd, at least 3 and at most 64
+    ///   bits.</param>
+    /// <exception cref="ECrypto4DArgumentError">The modulus or the exponent is outside these limits.</exception>
     class function Create(const Modulus, Exponent: TBytes): TRsaPublicKey; static;
+
+    /// <summary>
+    ///   True when the modulus, as big-endian bytes, is from 2048 up to 16384 bits long.
+    /// </summary>
     class function IsSupportedModulus(const Modulus: TBytes): Boolean; static;
+
+    /// <summary>
+    ///   True when the exponent, as big-endian bytes, is odd, at least 3 and at most 64 bits long.
+    /// </summary>
     class function IsSupportedExponent(const Exponent: TBytes): Boolean; static;
+
+    /// <summary>
+    ///   Raises when IsSupportedModulus is False.
+    /// </summary>
+    /// <exception cref="ECrypto4DArgumentError">The modulus is under 2048 or over 16384 bits.</exception>
     class procedure GuardModulus(const Modulus: TBytes); static;
+
+    /// <summary>
+    ///   Raises when IsSupportedExponent is False.
+    /// </summary>
+    /// <exception cref="ECrypto4DArgumentError">The exponent is even, smaller than 3 or longer than 64
+    ///   bits.</exception>
     class procedure GuardExponent(const Exponent: TBytes); static;
 
+    /// <summary>
+    ///   The modulus as big-endian bytes, as given to Create.
+    /// </summary>
     property Modulus: TBytes read FModulus;
+
+    /// <summary>
+    ///   The public exponent as big-endian bytes, as given to Create.
+    /// </summary>
     property Exponent: TBytes read FExponent;
   end;
 
+  /// <summary>
+  ///   Verifies RSA signatures with PKCS #1 v1.5 padding and SHA-256 (RS256).
+  /// </summary>
   TRsaPkcs1Sha256 = class
   private
     const
@@ -39,6 +79,18 @@ type
     class function Sha256DigestInfoPrefix: TBytes; static;
 
   public
+    /// <summary>
+    ///   Verifies a signature. The expected encoded message is built and compared as a whole; the padding is not
+    ///   parsed.
+    /// </summary>
+    /// <param name="PublicKey">Key of the signer.</param>
+    /// <param name="Message">The signed message itself, not its digest; may be empty.</param>
+    /// <param name="Signature">Big-endian bytes, exactly as long as the modulus.</param>
+    /// <returns>True when the signature is valid. False when Signature has another length than the modulus, its
+    ///   value is not below the modulus, or the signature does not match. A DigestInfo without the NULL parameter
+    ///   does not match.</returns>
+    /// <exception cref="ECrypto4DArgumentError">PublicKey is outside the limits of TRsaPublicKey.Create, as with a
+    ///   key that was never assigned.</exception>
     class function Verify(const PublicKey: TRsaPublicKey; const Message, Signature: TBytes): Boolean; static;
   end;
 

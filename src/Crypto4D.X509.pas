@@ -9,6 +9,9 @@ uses
   Crypto4D.Rsa;
 
 type
+  /// <summary>
+  ///   Object identifiers of the algorithms that Crypto4D supports, in dotted notation.
+  /// </summary>
   TX509Oid = record
   public
     const
@@ -20,22 +23,53 @@ type
       Ed25519           = '1.3.101.112';
   end;
 
+  /// <summary>
+  ///   An AlgorithmIdentifier: an object identifier with optional parameters.
+  /// </summary>
   TX509AlgorithmIdentifier = record
   private
     FOid: string;
     FParameters: TBytes;
 
   public
+    /// <summary>
+    ///   Reads an AlgorithmIdentifier from a DER element.
+    /// </summary>
+    /// <param name="Element">The SEQUENCE element.</param>
+    /// <param name="Algorithm">Receives the result.</param>
+    /// <returns>False when Element is not a SEQUENCE of an OBJECT IDENTIFIER followed by at most one
+    ///   element.</returns>
     class function TryParse(const Element: TDerElement; out Algorithm: TX509AlgorithmIdentifier): Boolean; static;
 
+    /// <summary>
+    ///   True when the parameters are absent.
+    /// </summary>
     function HasNoParameters: Boolean;
+
+    /// <summary>
+    ///   True when the parameters are absent or an ASN.1 NULL.
+    /// </summary>
     function HasNullOrNoParameters: Boolean;
+
+    /// <summary>
+    ///   True when Other has the same object identifier and the same encoded parameters.
+    /// </summary>
     function IsSameAs(const Other: TX509AlgorithmIdentifier): Boolean;
 
+    /// <summary>
+    ///   The object identifier in dotted notation.
+    /// </summary>
     property Oid: string read FOid;
+
+    /// <summary>
+    ///   DER encoding of the parameters element, or empty when the parameters are absent.
+    /// </summary>
     property Parameters: TBytes read FParameters;
   end;
 
+  /// <summary>
+  ///   A SubjectPublicKeyInfo: the algorithm of a public key and the key itself.
+  /// </summary>
   TX509PublicKeyInfo = record
   private
     FAlgorithm: TX509AlgorithmIdentifier;
@@ -45,17 +79,58 @@ type
     class function TryParseElement(const Element: TDerElement; out PublicKey: TX509PublicKeyInfo): Boolean; static;
 
   public
+    /// <summary>
+    ///   Parses a DER encoded SubjectPublicKeyInfo, which is also the content of a PEM block "PUBLIC KEY".
+    /// </summary>
+    /// <param name="Der">The complete DER encoding, without anything after it.</param>
+    /// <param name="PublicKey">Receives the result.</param>
+    /// <returns>False when Der is not strict DER or not a SubjectPublicKeyInfo. The key itself is not checked
+    ///   here.</returns>
     class function TryParse(const Der: TBytes; out PublicKey: TX509PublicKeyInfo): Boolean; static;
 
+    /// <summary>
+    ///   Converts the key to an ECDSA key on P-256.
+    /// </summary>
+    /// <param name="Key">Receives the key.</param>
+    /// <returns>False when the algorithm is not id-ecPublicKey with the curve prime256v1, or the key is not an
+    ///   uncompressed point of 65 bytes. Whether the point is on the curve is checked when a signature is
+    ///   verified.</returns>
     function TryGetEcdsaP256Key(out Key: TEcdsaP256PublicKey): Boolean;
+
+    /// <summary>
+    ///   Converts the key to an RSA key.
+    /// </summary>
+    /// <param name="Key">Receives the key.</param>
+    /// <returns>False when the algorithm is not rsaEncryption with absent or NULL parameters, the key is not a DER
+    ///   encoded RSAPublicKey, or modulus or exponent is outside the limits of TRsaPublicKey.Create.</returns>
     function TryGetRsaKey(out Key: TRsaPublicKey): Boolean;
+
+    /// <summary>
+    ///   Returns the Ed25519 key.
+    /// </summary>
+    /// <param name="Key">Receives the encoded public key, 32 bytes.</param>
+    /// <returns>False when the algorithm is not Ed25519 without parameters or the key is not 32 bytes.</returns>
     function TryGetEd25519Key(out Key: TBytes): Boolean;
 
+    /// <summary>
+    ///   The algorithm of the key.
+    /// </summary>
     property Algorithm: TX509AlgorithmIdentifier read FAlgorithm;
+
+    /// <summary>
+    ///   Content of the subjectPublicKey BIT STRING.
+    /// </summary>
     property KeyBytes: TBytes read FKeyBytes;
+
+    /// <summary>
+    ///   DER encoding of the whole SubjectPublicKeyInfo.
+    /// </summary>
     property Encoded: TBytes read FEncoded;
   end;
 
+  /// <summary>
+  ///   One certificate extension. The value is not interpreted.
+  /// </summary>
   TX509Extension = record
   private
     FOid: string;
@@ -63,13 +138,36 @@ type
     FValue: TBytes;
 
   public
+    /// <summary>
+    ///   Reads an Extension from a DER element.
+    /// </summary>
+    /// <param name="Element">The SEQUENCE element.</param>
+    /// <param name="Extension">Receives the result.</param>
+    /// <returns>False when Element is not a SEQUENCE of an OBJECT IDENTIFIER, an optional BOOLEAN and an OCTET
+    ///   STRING, or when the BOOLEAN is present with the value FALSE, which DER does not allow for a default
+    ///   value.</returns>
     class function TryParse(const Element: TDerElement; out Extension: TX509Extension): Boolean; static;
 
+    /// <summary>
+    ///   The object identifier of the extension in dotted notation.
+    /// </summary>
     property Oid: string read FOid;
+
+    /// <summary>
+    ///   True when the extension is marked critical.
+    /// </summary>
     property Critical: Boolean read FCritical;
+
+    /// <summary>
+    ///   Content of the extnValue OCTET STRING, which is the DER encoding of the extension value.
+    /// </summary>
     property Value: TBytes read FValue;
   end;
 
+  /// <summary>
+  ///   The fields of a parsed X.509 certificate. Crypto4D does not validate a chain: it has no trust store and it
+  ///   does not look at validity dates, key usage, names or revocation.
+  /// </summary>
   TX509CertificateInfo = record
   private
     const
@@ -111,21 +209,91 @@ type
     function VerifyEd25519(const IssuerKey: TX509PublicKeyInfo): Boolean;
 
   public
+    /// <summary>
+    ///   Parses a DER encoded certificate.
+    /// </summary>
+    /// <param name="Der">The complete DER encoding, without anything after it. For a PEM file, decode the Base64
+    ///   first.</param>
+    /// <param name="Certificate">Receives the result.</param>
+    /// <returns>False when Der is not strict DER or not a certificate: a field is missing or out of order, the
+    ///   version is above 3 or is 1 in explicit form, the serial number is not in its shortest encoding, a unique
+    ///   identifier appears in a version 1 certificate, extensions appear in a certificate that is not version 3,
+    ///   the list of extensions is empty or names an extension twice. Issuer, validity and subject are kept as they
+    ///   are; their content is not parsed.</returns>
     class function TryParse(const Der: TBytes; out Certificate: TX509CertificateInfo): Boolean; static;
 
+    /// <summary>
+    ///   Looks up an extension by its object identifier.
+    /// </summary>
+    /// <param name="Oid">Object identifier in dotted notation, such as 2.5.29.19.</param>
+    /// <param name="Extension">Receives the extension.</param>
+    /// <returns>False when the certificate has no such extension.</returns>
     function TryFindExtension(const Oid: string; out Extension: TX509Extension): Boolean;
+
+    /// <summary>
+    ///   Checks the signature of the certificate with a given public key.
+    /// </summary>
+    /// <param name="IssuerKey">Public key of the issuer, for example the PublicKey of the issuer
+    ///   certificate.</param>
+    /// <returns>True when the signature over TbsCertificate is valid for IssuerKey. False when the two signature
+    ///   algorithm identifiers of the certificate differ, the algorithm is not ecdsa-with-SHA256,
+    ///   sha256WithRSAEncryption or Ed25519, IssuerKey is not a key for that algorithm, or the signature does not
+    ///   match.</returns>
     function IsSignedBy(const IssuerKey: TX509PublicKeyInfo): Boolean;
 
+    /// <summary>
+    ///   DER encoding of tbsCertificate, the part that is signed.
+    /// </summary>
     property TbsCertificate: TBytes read FTbsCertificate;
+
+    /// <summary>
+    ///   Certificate version: 1, 2 or 3.
+    /// </summary>
     property Version: Integer read FVersion;
+
+    /// <summary>
+    ///   Content of the serialNumber INTEGER: two's complement, most significant byte first.
+    /// </summary>
     property SerialNumber: TBytes read FSerialNumber;
+
+    /// <summary>
+    ///   The signature algorithm as stated inside tbsCertificate.
+    /// </summary>
     property TbsSignatureAlgorithm: TX509AlgorithmIdentifier read FTbsSignatureAlgorithm;
+
+    /// <summary>
+    ///   DER encoding of the issuer name.
+    /// </summary>
     property Issuer: TBytes read FIssuer;
+
+    /// <summary>
+    ///   DER encoding of the validity SEQUENCE.
+    /// </summary>
     property Validity: TBytes read FValidity;
+
+    /// <summary>
+    ///   DER encoding of the subject name.
+    /// </summary>
     property Subject: TBytes read FSubject;
+
+    /// <summary>
+    ///   The public key of the subject.
+    /// </summary>
     property PublicKey: TX509PublicKeyInfo read FPublicKey;
+
+    /// <summary>
+    ///   The extensions in the order of the certificate; empty when there are none.
+    /// </summary>
     property Extensions: TArray<TX509Extension> read FExtensions;
+
+    /// <summary>
+    ///   The signature algorithm as stated outside tbsCertificate.
+    /// </summary>
     property SignatureAlgorithm: TX509AlgorithmIdentifier read FSignatureAlgorithm;
+
+    /// <summary>
+    ///   Content of the signatureValue BIT STRING.
+    /// </summary>
     property Signature: TBytes read FSignature;
   end;
 
