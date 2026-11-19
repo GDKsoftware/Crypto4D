@@ -23,6 +23,23 @@ type
       BasicConstraintsOid  = '2.5.29.19';
       UnknownOid           = '1.2.3.4';
       SequenceTag          = $30;
+      OuterHeaderSize      = 4;
+      KeyIdentifierSize    = 22;
+      AlgorithmName        = 'signatureAlgorithm';
+      BitStringTag         = $03;
+      OctetStringTag       = $04;
+      ObjectIdTag          = $06;
+      ExtensionsTag        = $A3;
+      Ed25519AlgorithmHex  = '300506032b6570';
+      VersionOneHex        = 'a003020100';
+      VersionTwoHex        = 'a003020101';
+      VersionThreeHex      = 'a003020102';
+      SerialOneHex         = '020101';
+      FirstExtensionArc    = 16384;
+      KeySize              = 32;
+      SignatureSize        = 64;
+      ManyExtensions       = 80000;
+      TimeLimitMs          = 5000;
 
     var
       FManifest: TJSONObject;
@@ -30,6 +47,12 @@ type
     function Load(const FileName: string): TBytes;
     function Parse(const FileName: string): TX509Certificate;
     function ManifestEntry(const FileName: string): TJSONObject;
+    function Bytes(const Hex: string): TBytes;
+    function BitString(const Content: TBytes): TBytes;
+    function Extension(const Number: Integer): TBytes;
+    function ExtensionList(const Extensions: TBytes): TBytes;
+    function CraftedCertificate(const VersionHex, SerialHex: string; const OptionalFields: TBytes): TBytes;
+    function Parses(const Der: TBytes): Boolean;
 
   public
     [SetupFixture]
@@ -80,6 +103,54 @@ type
     procedure TryParse_Empty_ReturnsFalse;
 
     [Test]
+    procedure TryParse_CraftedCertificateWithExtension_ReturnsTrue;
+
+    [Test]
+    procedure TryParse_ExplicitDefaultVersion_ReturnsFalse;
+
+    [Test]
+    [TestCase('Positive', '020101,True')]
+    [TestCase('NeedsSignByte', '02020080,True')]
+    [TestCase('Negative', '020180,True')]
+    [TestCase('NegativeTwoBytes', '0202ff7f,True')]
+    [TestCase('Empty', '0200,False')]
+    [TestCase('RedundantZero', '0202007f,False')]
+    [TestCase('RedundantOnes', '0202ff80,False')]
+    procedure TryParse_SerialNumberEncoding_AcceptsMinimalOnly(const SerialHex: string; const Expected: Boolean);
+
+    [Test]
+    [TestCase('VersionOneWithUniqueId', ',810200aa,False')]
+    [TestCase('VersionTwoWithUniqueId', 'a003020101,810200aa,True')]
+    [TestCase('VersionThreeWithBothUniqueIds', 'a003020102,810200aa820200bb,True')]
+    [TestCase('SubjectIdBeforeIssuerId', 'a003020102,820200bb810200aa,False')]
+    procedure TryParse_UniqueIdentifiers_NeedVersionTwo(const VersionHex: string; const FieldsHex: string; const Expected: Boolean);
+
+    [Test]
+    [TestCase('VersionOne', ',False')]
+    [TestCase('VersionTwo', 'a003020101,False')]
+    [TestCase('VersionThree', 'a003020102,True')]
+    procedure TryParse_Extensions_NeedVersionThree(const VersionHex: string; const Expected: Boolean);
+
+    [Test]
+    [TestCase('NoUnusedBits', '810200aa,True')]
+    [TestCase('UnusedBitsAreZero', '810203a8,True')]
+    [TestCase('EmptyBitString', '810100,True')]
+    [TestCase('NoContent', '8100,False')]
+    [TestCase('UnusedBitsWithoutData', '810101,False')]
+    [TestCase('EightUnusedBits', '810208aa,False')]
+    [TestCase('UnusedBitsAreSet', '810203ac,False')]
+    procedure TryParse_UniqueIdentifierEncoding_AcceptsDerBitStringOnly(const UniqueIdHex: string; const Expected: Boolean);
+
+    [Test]
+    procedure TryParse_DuplicateExtension_ReturnsFalse;
+
+    [Test]
+    procedure TryParse_EmptyExtensionList_ReturnsFalse;
+
+    [Test]
+    procedure TryParse_ManyExtensions_FinishesWithinTimeLimit;
+
+    [Test]
     procedure TbsCertificate_OfParsedCertificate_IsFirstElementOfCertificate;
 
     [Test]
@@ -101,6 +172,7 @@ type
 implementation
 
 uses
+  System.Diagnostics,
   Crypto4D.Ecdsa,
   Crypto4D.Rsa,
   Crypto4D.TestSupport;
@@ -122,21 +194,187 @@ end;
 
 function TX509Tests.Parse(const FileName: string): TX509Certificate;
 begin
-  const Parsed = TX509Certificate.TryParse(Load(FileName), Result);
+  const Der    = Load(FileName);
+  const Parsed = TX509Certificate.TryParse(Der, Result);
   Assert.IsTrue(Parsed, FileName);
 end;
 
 function TX509Tests.ManifestEntry(const FileName: string): TJSONObject;
 begin
   const Certificates = TTestSupport.ArrayOf(FManifest, 'certificates');
-  for var Index := 0 to Certificates.Count - 1 do
+  for var Item in Certificates do
   begin
-    const Entry = TTestSupport.ObjectAt(Certificates, Index);
-    if Entry.GetValue<string>('file') = FileName then
+    const Entry    = Item as TJSONObject;
+    const IsWanted = (Entry.GetValue<string>('file') = FileName);
+    if IsWanted then
       Exit(Entry);
   end;
 
   raise ETestSupportError.CreateFmt('Certificate "%s" is not in the manifest', [FileName]);
+end;
+
+function TX509Tests.Bytes(const Hex: string): TBytes;
+begin
+  Result := TTestSupport.HexToBytes(Hex);
+end;
+
+function TX509Tests.BitString(const Content: TBytes): TBytes;
+begin
+  const NoUnusedBits = TBytes.Create(0);
+  Result := TTestSupport.DerElement(BitStringTag, NoUnusedBits + Content);
+end;
+
+function TX509Tests.Extension(const Number: Integer): TBytes;
+begin
+  const LastArc    = FirstExtensionArc + Number;
+  const LowArc     = Byte(LastArc and $7F);
+  const MiddleArc  = Byte(((LastArc shr 7) and $7F) or $80);
+  const HighArc    = Byte(((LastArc shr 14) and $7F) or $80);
+  const Arcs       = TBytes.Create($2A, $03, HighArc, MiddleArc, LowArc);
+  const ObjectId   = TTestSupport.DerElement(ObjectIdTag, Arcs);
+  const EmptyValue = TTestSupport.DerElement(OctetStringTag, nil);
+
+  Result := TTestSupport.DerElement(SequenceTag, ObjectId + EmptyValue);
+end;
+
+function TX509Tests.ExtensionList(const Extensions: TBytes): TBytes;
+begin
+  const List = TTestSupport.DerElement(SequenceTag, Extensions);
+  Result := TTestSupport.DerElement(ExtensionsTag, List);
+end;
+
+function TX509Tests.CraftedCertificate(const VersionHex, SerialHex: string; const OptionalFields: TBytes): TBytes;
+begin
+  var Key: TBytes;
+  var Signature: TBytes;
+  SetLength(Key, KeySize);
+  SetLength(Signature, SignatureSize);
+
+  const Algorithm = Bytes(Ed25519AlgorithmHex);
+  const EmptyName = TTestSupport.DerElement(SequenceTag, nil);
+  const KeyInfo   = TTestSupport.DerElement(SequenceTag, Algorithm + BitString(Key));
+  const TbsFields = Bytes(VersionHex) + Bytes(SerialHex) + Algorithm + EmptyName + EmptyName + EmptyName + KeyInfo +
+                    OptionalFields;
+  const Tbs       = TTestSupport.DerElement(SequenceTag, TbsFields);
+
+  Result := TTestSupport.DerElement(SequenceTag, Tbs + Algorithm + BitString(Signature));
+end;
+
+function TX509Tests.Parses(const Der: TBytes): Boolean;
+begin
+  var Certificate: TX509Certificate;
+  Result := TX509Certificate.TryParse(Der, Certificate);
+end;
+
+procedure TX509Tests.TryParse_CraftedCertificateWithExtension_ReturnsTrue;
+begin
+  const SingleExtension = Extension(1);
+  const Fields          = ExtensionList(SingleExtension);
+  const Der             = CraftedCertificate(VersionThreeHex, SerialOneHex, Fields);
+  var Certificate: TX509Certificate;
+
+  const Parsed = TX509Certificate.TryParse(Der, Certificate);
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual(3, Certificate.Version);
+  Assert.AreEqual(1, Integer(Length(Certificate.Extensions)));
+  Assert.AreEqual('1.2.3.16385', Certificate.Extensions[0].Oid);
+end;
+
+procedure TX509Tests.TryParse_ExplicitDefaultVersion_ReturnsFalse;
+begin
+  const Der = CraftedCertificate(VersionOneHex, SerialOneHex, nil);
+
+  const Parsed = Parses(Der);
+
+  Assert.IsFalse(Parsed);
+end;
+
+procedure TX509Tests.TryParse_SerialNumberEncoding_AcceptsMinimalOnly(const SerialHex: string; const Expected: Boolean);
+begin
+  const Der = CraftedCertificate(VersionThreeHex, SerialHex, nil);
+
+  const Parsed = Parses(Der);
+
+  Assert.AreEqual(Expected, Parsed);
+end;
+
+procedure TX509Tests.TryParse_UniqueIdentifiers_NeedVersionTwo(const VersionHex: string;
+                                                               const FieldsHex: string;
+                                                               const Expected: Boolean);
+begin
+  const Fields = Bytes(FieldsHex);
+  const Der    = CraftedCertificate(VersionHex, SerialOneHex, Fields);
+
+  const Parsed = Parses(Der);
+
+  Assert.AreEqual(Expected, Parsed);
+end;
+
+procedure TX509Tests.TryParse_Extensions_NeedVersionThree(const VersionHex: string; const Expected: Boolean);
+begin
+  const SingleExtension = Extension(1);
+  const Fields          = ExtensionList(SingleExtension);
+  const Der             = CraftedCertificate(VersionHex, SerialOneHex, Fields);
+
+  const Parsed = Parses(Der);
+
+  Assert.AreEqual(Expected, Parsed);
+end;
+
+procedure TX509Tests.TryParse_UniqueIdentifierEncoding_AcceptsDerBitStringOnly(const UniqueIdHex: string;
+                                                                               const Expected: Boolean);
+begin
+  const UniqueId = Bytes(UniqueIdHex);
+  const Der      = CraftedCertificate(VersionTwoHex, SerialOneHex, UniqueId);
+
+  const Parsed = Parses(Der);
+
+  Assert.AreEqual(Expected, Parsed);
+end;
+
+procedure TX509Tests.TryParse_DuplicateExtension_ReturnsFalse;
+begin
+  const Extensions = Extension(1) + Extension(2) + Extension(1);
+  const Fields     = ExtensionList(Extensions);
+  const Der        = CraftedCertificate(VersionThreeHex, SerialOneHex, Fields);
+
+  const Parsed = Parses(Der);
+
+  Assert.IsFalse(Parsed);
+end;
+
+procedure TX509Tests.TryParse_EmptyExtensionList_ReturnsFalse;
+begin
+  const EmptyList = ExtensionList(nil);
+  const Der       = CraftedCertificate(VersionThreeHex, SerialOneHex, EmptyList);
+
+  const Parsed = Parses(Der);
+
+  Assert.IsFalse(Parsed);
+end;
+
+procedure TX509Tests.TryParse_ManyExtensions_FinishesWithinTimeLimit;
+begin
+  const ExtensionSize = Length(Extension(0));
+  var Extensions: TBytes;
+  SetLength(Extensions, ManyExtensions * ExtensionSize);
+  for var Number := 0 to ManyExtensions - 1 do
+  begin
+    const Encoded = Extension(Number);
+    Move(Encoded[0], Extensions[Number * ExtensionSize], ExtensionSize);
+  end;
+  const Fields = ExtensionList(Extensions);
+  const Der    = CraftedCertificate(VersionThreeHex, SerialOneHex, Fields);
+  var Certificate: TX509Certificate;
+
+  const Watch     = TStopwatch.StartNew;
+  const Parsed    = TX509Certificate.TryParse(Der, Certificate);
+  const ElapsedMs = Watch.ElapsedMilliseconds;
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual(ManyExtensions, Integer(Length(Certificate.Extensions)));
+  Assert.IsTrue(ElapsedMs < TimeLimitMs, Format('%d extensions took %d ms', [ManyExtensions, ElapsedMs]));
 end;
 
 procedure TX509Tests.TryParse_OpenSslCertificate_MatchesOpenSslReport(const FileName: string);
@@ -145,11 +383,16 @@ begin
 
   const Certificate = Parse(FileName);
 
+  const ExpectedSerial    = Entry.GetValue<string>('serialNumber');
+  const ExpectedAlgorithm = Entry.GetValue<string>(AlgorithmName);
+  const ExpectedKey       = Entry.GetValue<string>('publicKey');
+  const ActualSerial      = TTestSupport.BytesToHex(Certificate.SerialNumber);
+  const ActualKey         = TTestSupport.BytesToHex(Certificate.PublicKey.Encoded);
   Assert.AreEqual(3, Certificate.Version);
-  Assert.AreEqual(Entry.GetValue<string>('serialNumber'), TTestSupport.BytesToHex(Certificate.SerialNumber));
-  Assert.AreEqual(Entry.GetValue<string>('signatureAlgorithm'), Certificate.SignatureAlgorithm.Oid);
-  Assert.AreEqual(Entry.GetValue<string>('signatureAlgorithm'), Certificate.TbsSignatureAlgorithm.Oid);
-  Assert.AreEqual(Entry.GetValue<string>('publicKey'), TTestSupport.BytesToHex(Certificate.PublicKey.Encoded));
+  Assert.AreEqual(ExpectedSerial, ActualSerial);
+  Assert.AreEqual(ExpectedAlgorithm, Certificate.SignatureAlgorithm.Oid);
+  Assert.AreEqual(ExpectedAlgorithm, Certificate.TbsSignatureAlgorithm.Oid);
+  Assert.AreEqual(ExpectedKey, ActualKey);
   Assert.AreEqual(SequenceTag, Integer(Certificate.Issuer[0]));
   Assert.AreEqual(SequenceTag, Integer(Certificate.Subject[0]));
   Assert.AreEqual(SequenceTag, Integer(Certificate.Validity[0]));
@@ -159,7 +402,8 @@ procedure TX509Tests.IsSignedBy_IssuerKey_ReturnsTrue(const FileName: string);
 begin
   const Entry       = ManifestEntry(FileName);
   const Certificate = Parse(FileName);
-  const Issuer      = Parse(Entry.GetValue<string>('signedBy'));
+  const IssuerFile  = Entry.GetValue<string>('signedBy');
+  const Issuer      = Parse(IssuerFile);
 
   const Verified = Certificate.IsSignedBy(Issuer.PublicKey);
 
@@ -201,14 +445,18 @@ begin
     if Parsed then
     begin
       Inc(ParsedCount);
-      Assert.IsFalse(Certificate.IsSignedBy(IssuerKey), Format('byte %d by original key', [ByteIndex]));
-      Assert.IsFalse(Certificate.IsSignedBy(Certificate.PublicKey), Format('byte %d by own key', [ByteIndex]));
+      const VerifiedByOriginalKey = Certificate.IsSignedBy(IssuerKey);
+      const VerifiedByOwnKey      = Certificate.IsSignedBy(Certificate.PublicKey);
+      Assert.IsFalse(VerifiedByOriginalKey, Format('byte %d by original key', [ByteIndex]));
+      Assert.IsFalse(VerifiedByOwnKey, Format('byte %d by own key', [ByteIndex]));
     end;
   end;
 
-  TTestSupport.Log(Format('%s: %d damaged variants, %d still parse and none verifies',
-                          [FileName, Length(Original), ParsedCount]));
-  Assert.IsTrue(ParsedCount > 0);
+  const Summary     = Format('%s: %d damaged variants, %d still parse and none verifies',
+                             [FileName, Length(Original), ParsedCount]);
+  const SomeParsed  = (ParsedCount > 0);
+  TTestSupport.Log(Summary);
+  Assert.IsTrue(SomeParsed);
 end;
 
 procedure TX509Tests.TryParse_AnyTruncation_ReturnsFalse(const FileName: string);
@@ -245,8 +493,6 @@ begin
 end;
 
 procedure TX509Tests.TbsCertificate_OfParsedCertificate_IsFirstElementOfCertificate;
-const
-  OuterHeaderSize = 4;
 begin
   const Original    = Load(RsaFile);
   const Certificate = Parse(RsaFile);
@@ -254,12 +500,12 @@ begin
   const Tbs      = Certificate.TbsCertificate;
   const Expected = Copy(Original, OuterHeaderSize, Length(Tbs));
 
-  Assert.AreEqual(TTestSupport.BytesToHex(Expected), TTestSupport.BytesToHex(Tbs));
+  const ExpectedHex = TTestSupport.BytesToHex(Expected);
+  const ActualHex   = TTestSupport.BytesToHex(Tbs);
+  Assert.AreEqual(ExpectedHex, ActualHex);
 end;
 
 procedure TX509Tests.TryFindExtension_PresentExtension_ReturnsValue;
-const
-  KeyIdentifierSize = 22;
 begin
   const Certificate = Parse(P256File);
   var Extension: TX509Extension;
@@ -279,8 +525,9 @@ begin
   const Found = Certificate.TryFindExtension(BasicConstraintsOid, Extension);
 
   Assert.IsTrue(Found);
+  const ValueHex = TTestSupport.BytesToHex(Extension.Value);
   Assert.IsTrue(Extension.Critical);
-  Assert.AreEqual('30030101ff', TTestSupport.BytesToHex(Extension.Value));
+  Assert.AreEqual('30030101ff', ValueHex);
 end;
 
 procedure TX509Tests.TryFindExtension_AbsentExtension_ReturnsFalse;
@@ -295,9 +542,10 @@ end;
 
 procedure TX509Tests.PublicKeyInfoTryParse_Garbage_ReturnsFalse;
 begin
+  const Garbage = TBytes.Create($30, $03, $02, $01, $05);
   var PublicKey: TX509PublicKeyInfo;
 
-  const Parsed = TX509PublicKeyInfo.TryParse(TBytes.Create($30, $03, $02, $01, $05), PublicKey);
+  const Parsed = TX509PublicKeyInfo.TryParse(Garbage, PublicKey);
 
   Assert.IsFalse(Parsed);
 end;

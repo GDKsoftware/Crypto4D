@@ -28,14 +28,17 @@ type
 
     function TryDecodeArcs(out Arcs: TArray<UInt64>): Boolean;
     function FormatArcs(const Arcs: TArray<UInt64>): string;
+    function HasMinimalIntegerContent: Boolean;
 
   public
     class function Create(const Tag: Byte; const Content, Encoded: TBytes): TDerElement; static;
 
     function IsContextSpecific(const TagNumber: Byte): Boolean;
+    function TryGetInteger(out TwosComplement: TBytes): Boolean;
     function TryGetUnsignedInteger(out Magnitude: TBytes): Boolean;
     function TryGetObjectId(out DottedText: string): Boolean;
     function TryGetBitStringBytes(out Bytes: TBytes): Boolean;
+    function HasBitStringContent: Boolean;
     function TryGetBoolean(out Value: Boolean): Boolean;
     function IsNull: Boolean;
 
@@ -78,7 +81,11 @@ const
   MaxArcBytes          = 9;
   FirstArcMultiplier   = 40;
   MaxFirstArc          = 2;
+  ArcSeparator         = '.';
   SignBit              = $80;
+  RedundantZero        = $00;
+  RedundantOnes        = $FF;
+  MaxUnusedBits        = 7;
   BooleanTrue          = $FF;
   BooleanFalse         = $00;
 
@@ -95,25 +102,47 @@ begin
   Result := (FTag = ExpectedTag);
 end;
 
-function TDerElement.TryGetUnsignedInteger(out Magnitude: TBytes): Boolean;
+function TDerElement.TryGetInteger(out TwosComplement: TBytes): Boolean;
 begin
-  Magnitude := nil;
-  const ContentLength = Length(FContent);
-  const IsInteger     = (FTag = TDerTag.Integer) and (ContentLength > 0);
+  TwosComplement := nil;
+  const IsInteger = (FTag = TDerTag.Integer) and HasMinimalIntegerContent;
   if not IsInteger then
     Exit(False);
 
-  const IsNegative = ((FContent[0] and SignBit) <> 0);
+  TwosComplement := FContent;
+  Result         := True;
+end;
+
+function TDerElement.HasMinimalIntegerContent: Boolean;
+begin
+  const ContentLength = Length(FContent);
+  const IsEmpty       = (ContentLength = 0);
+  if IsEmpty then
+    Exit(False);
+
+  const HasSingleByte = (ContentLength = 1);
+  if HasSingleByte then
+    Exit(True);
+
+  const NextIsNegative   = ((FContent[1] and SignBit) <> 0);
+  const HasRedundantZero = (FContent[0] = RedundantZero) and not NextIsNegative;
+  const HasRedundantOnes = (FContent[0] = RedundantOnes) and NextIsNegative;
+  Result := not (HasRedundantZero or HasRedundantOnes);
+end;
+
+function TDerElement.TryGetUnsignedInteger(out Magnitude: TBytes): Boolean;
+begin
+  Magnitude := nil;
+
+  var TwosComplement: TBytes;
+  if not TryGetInteger(TwosComplement) then
+    Exit(False);
+
+  const IsNegative = ((TwosComplement[0] and SignBit) <> 0);
   if IsNegative then
     Exit(False);
 
-  const HasRedundantLeadingZero = (ContentLength > 1) and
-                                  (FContent[0] = 0) and
-                                  ((FContent[1] and SignBit) = 0);
-  if HasRedundantLeadingZero then
-    Exit(False);
-
-  Magnitude := FContent;
+  Magnitude := TwosComplement;
   Result    := True;
 end;
 
@@ -133,6 +162,9 @@ end;
 function TDerElement.TryDecodeArcs(out Arcs: TArray<UInt64>): Boolean;
 begin
   Arcs := nil;
+  var Decoded: TArray<UInt64>;
+  SetLength(Decoded, Length(FContent));
+  var ArcCount := 0;
   var Arc: UInt64 := 0;
   var ArcBytes := 0;
 
@@ -149,14 +181,20 @@ begin
     const ArcIsComplete = ((Value and ArcContinuationFlag) = 0);
     if ArcIsComplete then
     begin
-      Arcs     := Arcs + [Arc];
+      Decoded[ArcCount] := Arc;
+      Inc(ArcCount);
       Arc      := 0;
       ArcBytes := 0;
     end;
   end;
 
   const EndsOnArcBoundary = (ArcBytes = 0);
-  Result := EndsOnArcBoundary and (Length(Arcs) > 0);
+  const IsComplete        = EndsOnArcBoundary and (ArcCount > 0);
+  if not IsComplete then
+    Exit(False);
+
+  Arcs   := Copy(Decoded, 0, ArcCount);
+  Result := True;
 end;
 
 function TDerElement.FormatArcs(const Arcs: TArray<UInt64>): string;
@@ -168,17 +206,27 @@ begin
     FirstArc := MaxFirstArc;
   const SecondArc = Combined - (FirstArc * FirstArcMultiplier);
 
-  Result := Format('%d.%d', [FirstArc, SecondArc]);
-  for var Index := 1 to High(Arcs) do
-  begin
-    Result := Format('%s.%d', [Result, Arcs[Index]]);
+  const Builder = TStringBuilder.Create;
+  try
+    Builder.Append(FirstArc);
+    Builder.Append(ArcSeparator);
+    Builder.Append(SecondArc);
+    for var Index := 1 to High(Arcs) do
+    begin
+      Builder.Append(ArcSeparator);
+      Builder.Append(Arcs[Index]);
+    end;
+
+    Result := Builder.ToString;
+  finally
+    Builder.Free;
   end;
 end;
 
 function TDerElement.TryGetBitStringBytes(out Bytes: TBytes): Boolean;
 begin
   Bytes := nil;
-  const IsBitString = (FTag = TDerTag.BitString) and (Length(FContent) > 0);
+  const IsBitString = (FTag = TDerTag.BitString) and HasBitStringContent;
   if not IsBitString then
     Exit(False);
 
@@ -188,6 +236,24 @@ begin
 
   Bytes  := Copy(FContent, 1, Length(FContent) - 1);
   Result := True;
+end;
+
+function TDerElement.HasBitStringContent: Boolean;
+begin
+  const ContentLength = Length(FContent);
+  const IsEmpty       = (ContentLength = 0);
+  if IsEmpty then
+    Exit(False);
+
+  const UnusedBits   = FContent[0];
+  const HasNoData    = (ContentLength = 1);
+  const IsImpossible = (UnusedBits > MaxUnusedBits) or (HasNoData and (UnusedBits > 0));
+  if IsImpossible then
+    Exit(False);
+
+  const UnusedMask: Byte = (1 shl UnusedBits) - 1;
+  const LastByte         = FContent[ContentLength - 1];
+  Result := ((LastByte and UnusedMask) = 0);
 end;
 
 function TDerElement.TryGetBoolean(out Value: Boolean): Boolean;

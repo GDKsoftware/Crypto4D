@@ -142,6 +142,11 @@ key to the key types above with `TryGetEcdsaP256Key`, `TryGetRsaKey` and `TryGet
 
 `IsSignedBy` supports `ecdsa-with-SHA256` with a P-256 key, `sha256WithRSAEncryption` and `Ed25519`.
 
+`TryParse` reads the structure of a certificate as strict DER. It also rejects a certificate that states version 1 explicitly, has a
+serial number that is not in its shortest encoding, holds a unique identifier in version 1 or extensions
+below version 3, or names an extension twice. Issuer, validity and subject are kept as DER; their content
+is not parsed.
+
 Crypto4D does not validate a certificate chain. It has no trust store and it does not look at validity
 dates, key usage, name constraints or revocation. `IsSignedBy` answers one question: was this certificate
 signed with that key.

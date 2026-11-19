@@ -11,6 +11,10 @@ type
   [TestFixture]
   TDerTests = class
   private
+    const
+      ManyArcs    = 400000;
+      TimeLimitMs = 5000;
+
     function Bytes(const Hex: string): TBytes;
     function TryReadSingle(const Hex: string; out Element: TDerElement): Boolean;
 
@@ -45,6 +49,21 @@ type
     procedure TryReadOnly_TrailingData_ReturnsFalse;
 
     [Test]
+    [TestCase('Zero', '020100')]
+    [TestCase('Positive', '02017f')]
+    [TestCase('PositiveWithSignByte', '02020080')]
+    [TestCase('Negative', '020180')]
+    [TestCase('NegativeWithSignByte', '0202ff7f')]
+    procedure TryGetInteger_MinimalEncoding_ReturnsContent(const Hex: string);
+
+    [Test]
+    [TestCase('Empty', '0200')]
+    [TestCase('RedundantZero', '0202007f')]
+    [TestCase('RedundantOnes', '0202ff80')]
+    [TestCase('NotAnInteger', '040101')]
+    procedure TryGetInteger_InvalidEncoding_ReturnsFalse(const Hex: string);
+
+    [Test]
     [TestCase('Zero', '020100,00')]
     [TestCase('Small', '02017f,7f')]
     [TestCase('NeedsSignByte', '02020080,0080')]
@@ -75,6 +94,9 @@ type
     procedure TryGetObjectId_InvalidEncoding_ReturnsFalse(const Hex: string);
 
     [Test]
+    procedure TryGetObjectId_ManyArcs_FinishesWithinTimeLimit;
+
+    [Test]
     procedure TryGetBitStringBytes_NoUnusedBits_ReturnsBytes;
 
     [Test]
@@ -82,6 +104,17 @@ type
     [TestCase('UnusedBits', '030201ff')]
     [TestCase('NotABitString', '040200ff')]
     procedure TryGetBitStringBytes_InvalidEncoding_ReturnsFalse(const Hex: string);
+
+    [Test]
+    [TestCase('NoUnusedBits', '030200ff,True')]
+    [TestCase('NoBits', '030100,True')]
+    [TestCase('UnusedBitsAreZero', '030203f8,True')]
+    [TestCase('OtherTag', '810200ff,True')]
+    [TestCase('Empty', '0300,False')]
+    [TestCase('UnusedBitsWithoutData', '030101,False')]
+    [TestCase('EightUnusedBits', '030208ff,False')]
+    [TestCase('UnusedBitsAreSet', '030203fc,False')]
+    procedure HasBitStringContent_Various_ReturnsExpected(const Hex: string; const Expected: Boolean);
 
     [Test]
     [TestCase('True', '0101ff,True,True')]
@@ -100,6 +133,7 @@ type
 implementation
 
 uses
+  System.Diagnostics,
   Crypto4D.TestSupport;
 
 function TDerTests.Bytes(const Hex: string): TBytes;
@@ -185,6 +219,41 @@ begin
   Assert.IsFalse(Found);
 end;
 
+procedure TDerTests.TryGetInteger_MinimalEncoding_ReturnsContent(const Hex: string);
+begin
+  var Element: TDerElement;
+  var TwosComplement: TBytes;
+  TryReadSingle(Hex, Element);
+
+  const Found = Element.TryGetInteger(TwosComplement);
+
+  const ExpectedContent = TTestSupport.BytesToHex(Element.Content);
+  const ActualContent   = TTestSupport.BytesToHex(TwosComplement);
+  Assert.IsTrue(Found);
+  Assert.AreEqual(ExpectedContent, ActualContent);
+end;
+
+procedure TDerTests.TryGetInteger_InvalidEncoding_ReturnsFalse(const Hex: string);
+begin
+  var Element: TDerElement;
+  var TwosComplement: TBytes;
+  TryReadSingle(Hex, Element);
+
+  const Found = Element.TryGetInteger(TwosComplement);
+
+  Assert.IsFalse(Found);
+end;
+
+procedure TDerTests.HasBitStringContent_Various_ReturnsExpected(const Hex: string; const Expected: Boolean);
+begin
+  var Element: TDerElement;
+  TryReadSingle(Hex, Element);
+
+  const Actual = Element.HasBitStringContent;
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
 procedure TDerTests.TryGetUnsignedInteger_MinimalEncoding_ReturnsMagnitude(const Hex: string; const Expected: string);
 begin
   var Element: TDerElement;
@@ -229,6 +298,27 @@ begin
   const Found = Element.TryGetObjectId(DottedText);
 
   Assert.IsFalse(Found);
+end;
+
+procedure TDerTests.TryGetObjectId_ManyArcs_FinishesWithinTimeLimit;
+begin
+  var Content: TBytes;
+  SetLength(Content, ManyArcs);
+  for var Index := 0 to High(Content) do
+  begin
+    Content[Index] := 1;
+  end;
+  const Element = TDerElement.Create(TDerTag.ObjectId, Content, nil);
+  var DottedText: string;
+
+  const Watch     = TStopwatch.StartNew;
+  const Found     = Element.TryGetObjectId(DottedText);
+  const ElapsedMs = Watch.ElapsedMilliseconds;
+
+  Assert.IsTrue(Found);
+  Assert.IsTrue(DottedText.StartsWith('0.1.1.'));
+  Assert.AreEqual((ManyArcs + 1) * 2 - 1, DottedText.Length);
+  Assert.IsTrue(ElapsedMs < TimeLimitMs, Format('%d arcs took %d ms', [ManyArcs, ElapsedMs]));
 end;
 
 procedure TDerTests.TryGetBitStringBytes_NoUnusedBits_ReturnsBytes;

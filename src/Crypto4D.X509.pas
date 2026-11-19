@@ -78,8 +78,10 @@ type
       SubjectIdTagNumber  = 2;
       ExtensionsTagNumber = 3;
       DefaultVersion      = 1;
+      UniqueIdVersion     = 2;
       HighestVersion      = 3;
       PrimitiveContext    = $80;
+      SmallestExtension   = 7;
 
     var
       FTbsCertificate: TBytes;
@@ -101,7 +103,9 @@ type
     function TrySkipUniqueId(var Reader: TDerReader; const TagNumber: Byte): Boolean;
     function TryReadExtensions(var Reader: TDerReader): Boolean;
     function TryParseExtensionList(const Content: TBytes): Boolean;
-    function HasExtension(const Oid: string): Boolean;
+    function HasDuplicateExtension: Boolean;
+    class function SortedOids(const Oids: TArray<string>): TArray<string>; static;
+    class function MergedOids(const Lower, Upper: TArray<string>): TArray<string>; static;
     function VerifyEcdsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
     function VerifyRsa(const IssuerKey: TX509PublicKeyInfo): Boolean;
     function VerifyEd25519(const IssuerKey: TX509PublicKeyInfo): Boolean;
@@ -356,12 +360,11 @@ begin
   var SerialElement: TDerElement;
   var AlgorithmElement: TDerElement;
   const HasSerialAndAlgorithm = Reader.TryReadTagged(TDerTag.Integer, SerialElement) and
-                                (Length(SerialElement.Content) > 0) and
+                                SerialElement.TryGetInteger(FSerialNumber) and
                                 Reader.TryReadTagged(TDerTag.Sequence, AlgorithmElement) and
                                 TX509AlgorithmIdentifier.TryParse(AlgorithmElement, FTbsSignatureAlgorithm);
   if not HasSerialAndAlgorithm then
     Exit(False);
-  FSerialNumber := SerialElement.Content;
 
   if not TryReadNames(Reader) then
     Exit(False);
@@ -399,7 +402,7 @@ begin
     Exit(False);
 
   FVersion := VersionBytes[0] + 1;
-  Result   := (FVersion <= HighestVersion);
+  Result   := (FVersion > DefaultVersion) and (FVersion <= HighestVersion);
 end;
 
 function TX509Certificate.TryReadNames(var Reader: TDerReader): Boolean;
@@ -434,7 +437,7 @@ begin
     Exit(True);
 
   var UniqueId: TDerElement;
-  Result := Reader.TryRead(UniqueId);
+  Result := (FVersion >= UniqueIdVersion) and Reader.TryRead(UniqueId) and UniqueId.HasBitStringContent;
 end;
 
 function TX509Certificate.TryReadExtensions(var Reader: TDerReader): Boolean;
@@ -444,7 +447,9 @@ begin
     Exit(True);
 
   var Wrapper: TDerElement;
-  const HasWrapper = Reader.TryRead(Wrapper) and Wrapper.IsContextSpecific(ExtensionsTagNumber);
+  const HasWrapper = (FVersion = HighestVersion) and
+                     Reader.TryRead(Wrapper) and
+                     Wrapper.IsContextSpecific(ExtensionsTagNumber);
   if not HasWrapper then
     Exit(False);
 
@@ -459,26 +464,85 @@ begin
   if Reader.IsAtEnd then
     Exit(False);
 
+  var Parsed: TArray<TX509Extension>;
+  SetLength(Parsed, Length(Content) div SmallestExtension);
+  var Count := 0;
+
   while not Reader.IsAtEnd do
   begin
     var Element: TDerElement;
     var Extension: TX509Extension;
-    const IsNewExtension = Reader.TryRead(Element) and
-                           TX509Extension.TryParse(Element, Extension) and
-                           not HasExtension(Extension.Oid);
-    if not IsNewExtension then
+    const IsExtension = Reader.TryRead(Element) and TX509Extension.TryParse(Element, Extension);
+    if not IsExtension then
       Exit(False);
 
-    FExtensions := FExtensions + [Extension];
+    Parsed[Count] := Extension;
+    Inc(Count);
   end;
 
-  Result := True;
+  FExtensions := Copy(Parsed, 0, Count);
+  Result      := not HasDuplicateExtension;
 end;
 
-function TX509Certificate.HasExtension(const Oid: string): Boolean;
+function TX509Certificate.HasDuplicateExtension: Boolean;
 begin
-  var Extension: TX509Extension;
-  Result := TryFindExtension(Oid, Extension);
+  var Oids: TArray<string>;
+  SetLength(Oids, Length(FExtensions));
+  for var Index := 0 to High(FExtensions) do
+  begin
+    Oids[Index] := FExtensions[Index].Oid;
+  end;
+  const Sorted = SortedOids(Oids);
+
+  for var Index := 1 to High(Sorted) do
+  begin
+    const RepeatsPrevious = (Sorted[Index] = Sorted[Index - 1]);
+    if RepeatsPrevious then
+      Exit(True);
+  end;
+
+  Result := False;
+end;
+
+class function TX509Certificate.SortedOids(const Oids: TArray<string>): TArray<string>;
+begin
+  const Count          = Length(Oids);
+  const NeedsNoSorting = (Count <= 1);
+  if NeedsNoSorting then
+    Exit(Oids);
+
+  const Middle    = Count div 2;
+  const LowerHalf = Copy(Oids, 0, Middle);
+  const UpperHalf = Copy(Oids, Middle, Count - Middle);
+  const Lower     = SortedOids(LowerHalf);
+  const Upper     = SortedOids(UpperHalf);
+
+  Result := MergedOids(Lower, Upper);
+end;
+
+class function TX509Certificate.MergedOids(const Lower, Upper: TArray<string>): TArray<string>;
+begin
+  SetLength(Result, Length(Lower) + Length(Upper));
+  var LowerIndex := 0;
+  var UpperIndex := 0;
+
+  for var Index := 0 to High(Result) do
+  begin
+    const LowerIsDone = (LowerIndex = Length(Lower));
+    const UpperIsDone = (UpperIndex = Length(Upper));
+    const TakesLower  = UpperIsDone or
+                        ((not LowerIsDone) and (CompareStr(Lower[LowerIndex], Upper[UpperIndex]) <= 0));
+    if TakesLower then
+    begin
+      Result[Index] := Lower[LowerIndex];
+      Inc(LowerIndex);
+    end
+    else
+    begin
+      Result[Index] := Upper[UpperIndex];
+      Inc(UpperIndex);
+    end;
+  end;
 end;
 
 function TX509Certificate.TryFindExtension(const Oid: string; out Extension: TX509Extension): Boolean;
