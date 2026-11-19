@@ -65,6 +65,7 @@ type
     [TestCase('Rsa2048', 'rsa_signature_2048_sha256_test.json,259')]
     [TestCase('Rsa3072', 'rsa_signature_3072_sha256_test.json,259')]
     [TestCase('Rsa4096', 'rsa_signature_4096_sha256_test.json,258')]
+    [TestCase('Rsa8192', 'rsa_signature_8192_sha256_test.json,258')]
     procedure RsaPkcs1Sha256_Signatures_MatchExpectedResults(const FileName: string; const ExpectedTotal: Integer);
   end;
 

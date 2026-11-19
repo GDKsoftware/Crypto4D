@@ -14,44 +14,48 @@ type
     FModulus: TBytes;
     FExponent: TBytes;
 
+    class function IsSupportedModulusSize(const ModulusBits: Integer): Boolean; static;
+
   public
     const
       MinimumModulusBits  = 2048;
-      MaximumModulusBits  = 16384;
+      MaximumModulusBits  = 8192;
       MinimumExponent     = 3;
-      MaximumExponentBits = 64;
+      MaximumExponentBits = 33;
 
     /// <summary>
-    ///   Creates a key and checks its limits.
+    ///   Creates a key and checks its limits. For a key from an untrusted source, call IsSupportedModulus and
+    ///   IsSupportedExponent first when an exception is not wanted.
     /// </summary>
-    /// <param name="Modulus">The modulus n as big-endian bytes, from 2048 up to 16384 bits. Leading zero bytes are
-    ///   allowed.</param>
-    /// <param name="Exponent">The public exponent e as big-endian bytes: odd, at least 3 and at most 64
-    ///   bits.</param>
+    /// <param name="Modulus">The modulus n as big-endian bytes: odd and from 2048 up to 8192 bits. Leading zero
+    ///   bytes are allowed.</param>
+    /// <param name="Exponent">The public exponent e as big-endian bytes: odd, at least 3 and smaller than 2^33.
+    ///   Leading zero bytes are allowed.</param>
     /// <exception cref="ECrypto4DArgumentError">The modulus or the exponent is outside these limits.</exception>
     class function Create(const Modulus, Exponent: TBytes): TRsaPublicKey; static;
 
     /// <summary>
-    ///   True when the modulus, as big-endian bytes, is from 2048 up to 16384 bits long.
+    ///   True when the modulus, as big-endian bytes, is odd and from 2048 up to 8192 bits long.
     /// </summary>
     class function IsSupportedModulus(const Modulus: TBytes): Boolean; static;
 
     /// <summary>
-    ///   True when the exponent, as big-endian bytes, is odd, at least 3 and at most 64 bits long.
+    ///   True when the exponent, as big-endian bytes, is odd, at least 3 and smaller than 2^33.
     /// </summary>
     class function IsSupportedExponent(const Exponent: TBytes): Boolean; static;
 
     /// <summary>
     ///   Raises when IsSupportedModulus is False.
     /// </summary>
-    /// <exception cref="ECrypto4DArgumentError">The modulus is under 2048 or over 16384 bits.</exception>
+    /// <exception cref="ECrypto4DArgumentError">The modulus is even, under 2048 bits or over 8192
+    ///   bits.</exception>
     class procedure GuardModulus(const Modulus: TBytes); static;
 
     /// <summary>
     ///   Raises when IsSupportedExponent is False.
     /// </summary>
-    /// <exception cref="ECrypto4DArgumentError">The exponent is even, smaller than 3 or longer than 64
-    ///   bits.</exception>
+    /// <exception cref="ECrypto4DArgumentError">The exponent is even, smaller than 3, or 2^33 or
+    ///   larger.</exception>
     class procedure GuardExponent(const Exponent: TBytes); static;
 
     /// <summary>
@@ -104,6 +108,7 @@ uses
 
 resourcestring
   UnsupportedModulusSize = 'An RSA modulus must be between %d and %d bits, but this one is %d bits';
+  EvenModulus            = 'An RSA modulus must be odd, but this one is even';
   UnsupportedExponent    = 'An RSA public exponent must be odd, at least %d and at most %d bits, but this one is 0x%s';
 
 class function TRsaPublicKey.Create(const Modulus, Exponent: TBytes): TRsaPublicKey;
@@ -120,6 +125,11 @@ begin
   const Value       = TBigInteger.FromBytes(Modulus);
   const ModulusBits = Value.BitLength;
 
+  Result := Value.IsOdd and IsSupportedModulusSize(ModulusBits);
+end;
+
+class function TRsaPublicKey.IsSupportedModulusSize(const ModulusBits: Integer): Boolean;
+begin
   Result := (ModulusBits >= MinimumModulusBits) and (ModulusBits <= MaximumModulusBits);
 end;
 
@@ -136,8 +146,12 @@ begin
   if IsSupportedModulus(Modulus) then
     Exit;
 
-  const Value = TBigInteger.FromBytes(Modulus);
-  raise ECrypto4DArgumentError.CreateFmt(UnsupportedModulusSize, [MinimumModulusBits, MaximumModulusBits, Value.BitLength]);
+  const Value       = TBigInteger.FromBytes(Modulus);
+  const ModulusBits = Value.BitLength;
+  if not IsSupportedModulusSize(ModulusBits) then
+    raise ECrypto4DArgumentError.CreateFmt(UnsupportedModulusSize, [MinimumModulusBits, MaximumModulusBits, ModulusBits]);
+
+  raise ECrypto4DArgumentError.Create(EvenModulus);
 end;
 
 class procedure TRsaPublicKey.GuardExponent(const Exponent: TBytes);

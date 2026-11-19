@@ -31,6 +31,10 @@ type
       ObjectIdTag          = $06;
       ExtensionsTag        = $A3;
       Ed25519AlgorithmHex  = '300506032b6570';
+      RsaAlgorithmHex      = '300d06092a864886f70d0101010500';
+      IntegerTag           = $02;
+      RsaModulusSize       = 256;
+      HighestBitOfByte     = $80;
       VersionOneHex        = 'a003020100';
       VersionTwoHex        = 'a003020101';
       VersionThreeHex      = 'a003020102';
@@ -51,6 +55,7 @@ type
     function BitString(const Content: TBytes): TBytes;
     function Extension(const Number: Integer): TBytes;
     function ExtensionList(const Extensions: TBytes): TBytes;
+    function RsaKeyInfo(const LowestModulusByte: Byte; const ExponentHex: string): TBytes;
     function CraftedCertificate(const VersionHex, SerialHex: string; const OptionalFields: TBytes): TBytes;
     function Parses(const Der: TBytes): Boolean;
 
@@ -174,6 +179,16 @@ type
 
     [Test]
     procedure TryGetKey_OtherAlgorithm_ReturnsFalse;
+
+    [Test]
+    [TestCase('SmallestModulusAndCommonExponent', '1,010001,True')]
+    [TestCase('LargestExponent', '1,01ffffffff,True')]
+    [TestCase('EvenModulus', '0,010001,False')]
+    [TestCase('EvenExponent', '1,010000,False')]
+    [TestCase('ExponentTooLarge', '1,0200000001,False')]
+    procedure TryGetRsaKey_KeyLimits_AcceptsSupportedKeysOnly(const LowestModulusByte: Byte;
+                                                              const ExponentHex: string;
+                                                              const Expected: Boolean);
   end;
 
 implementation
@@ -248,6 +263,24 @@ function TX509Tests.ExtensionList(const Extensions: TBytes): TBytes;
 begin
   const List = TTestSupport.DerElement(SequenceTag, Extensions);
   Result := TTestSupport.DerElement(ExtensionsTag, List);
+end;
+
+function TX509Tests.RsaKeyInfo(const LowestModulusByte: Byte; const ExponentHex: string): TBytes;
+begin
+  var Modulus: TBytes;
+  SetLength(Modulus, RsaModulusSize);
+  Modulus[0]                  := HighestBitOfByte;
+  Modulus[RsaModulusSize - 1] := LowestModulusByte;
+
+  const SignByte      = TBytes.Create(0);
+  const Exponent      = Bytes(ExponentHex);
+  const ModulusValue  = TTestSupport.DerElement(IntegerTag, SignByte + Modulus);
+  const ExponentValue = TTestSupport.DerElement(IntegerTag, Exponent);
+  const RsaPublicKey  = TTestSupport.DerElement(SequenceTag, ModulusValue + ExponentValue);
+  const Algorithm     = Bytes(RsaAlgorithmHex);
+  const KeyBits       = BitString(RsaPublicKey);
+
+  Result := TTestSupport.DerElement(SequenceTag, Algorithm + KeyBits);
 end;
 
 function TX509Tests.CraftedCertificate(const VersionHex, SerialHex: string; const OptionalFields: TBytes): TBytes;
@@ -580,6 +613,21 @@ begin
   Assert.IsFalse(RsaKey.TryGetEcdsaP256Key(EcdsaKey));
   Assert.IsFalse(P256Key.TryGetRsaKey(RsaPublicKey));
   Assert.IsFalse(P256Key.TryGetEd25519Key(Ed25519Key));
+end;
+
+procedure TX509Tests.TryGetRsaKey_KeyLimits_AcceptsSupportedKeysOnly(const LowestModulusByte: Byte;
+                                                                     const ExponentHex: string;
+                                                                     const Expected: Boolean);
+begin
+  const Der = RsaKeyInfo(LowestModulusByte, ExponentHex);
+  var PublicKey: TX509PublicKeyInfo;
+  var Key: TRsaPublicKey;
+
+  const Parsed    = TX509PublicKeyInfo.TryParse(Der, PublicKey);
+  const Converted = PublicKey.TryGetRsaKey(Key);
+
+  Assert.IsTrue(Parsed);
+  Assert.AreEqual(Expected, Converted);
 end;
 
 end.

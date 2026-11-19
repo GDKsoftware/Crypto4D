@@ -26,7 +26,8 @@ type
       FMessage: TBytes;
       FSignature: TBytes;
 
-    function PowerOfTwo(const Exponent: Integer): TBytes;
+    function OddWithHighestBit(const HighestBit: Integer): TBytes;
+    function EvenModulus: TBytes;
 
   public
     [SetupFixture]
@@ -56,16 +57,23 @@ type
     [Test]
     [TestCase('Bits1024', '1023')]
     [TestCase('Bits2047', '2046')]
-    [TestCase('Bits16385', '16384')]
+    [TestCase('Bits8193', '8192')]
+    [TestCase('Bits16384', '16383')]
     procedure Create_UnsupportedModulusSize_RaisesArgumentError(const HighestBit: Integer);
 
     [Test]
     [TestCase('Bits2048', '2047')]
-    [TestCase('Bits16384', '16383')]
+    [TestCase('Bits8192', '8191')]
     procedure Create_ModulusAtSizeLimit_IsAccepted(const HighestBit: Integer);
 
     [Test]
     procedure Create_ModulusWithLeadingZeros_CountsSignificantBits;
+
+    [Test]
+    procedure Create_EvenModulus_RaisesArgumentError;
+
+    [Test]
+    procedure IsSupportedModulus_EvenModulus_ReturnsFalse;
 
     [Test]
     [TestCase('Empty', '')]
@@ -73,15 +81,16 @@ type
     [TestCase('One', '01')]
     [TestCase('Two', '02')]
     [TestCase('Even', '010000')]
+    [TestCase('TwoToThe33PlusOne', '0200000001')]
+    [TestCase('TwoToThe64MinusOne', 'ffffffffffffffff')]
     [TestCase('TwoToThe64PlusOne', '010000000000000001')]
-    [TestCase('TwoToThe64MinusOneTimes256', 'ffffffffffffffff01')]
     procedure Create_UnsupportedExponent_RaisesArgumentError(const ExponentHex: string);
 
     [Test]
     [TestCase('Three', '03')]
     [TestCase('F4', '010001')]
     [TestCase('F4WithLeadingZeros', '0000010001')]
-    [TestCase('LargestAllowed', 'ffffffffffffffff')]
+    [TestCase('TwoToThe33MinusOne', '01ffffffff')]
     procedure Create_SupportedExponent_IsAccepted(const ExponentHex: string);
 
     [Test]
@@ -117,10 +126,16 @@ begin
   end;
 end;
 
-function TRsaPkcs1Sha256Tests.PowerOfTwo(const Exponent: Integer): TBytes;
+function TRsaPkcs1Sha256Tests.OddWithHighestBit(const HighestBit: Integer): TBytes;
 begin
-  const Value = TBigInteger.One shl Exponent;
+  const Value = (TBigInteger.One shl HighestBit) + TBigInteger.One;
   Result := Value.ToBytes;
+end;
+
+function TRsaPkcs1Sha256Tests.EvenModulus: TBytes;
+begin
+  const LowestBit = (Length(FModulus) - 1) * 8;
+  Result := TTestSupport.FlipBit(FModulus, LowestBit);
 end;
 
 procedure TRsaPkcs1Sha256Tests.Verify_ValidSignature_ReturnsTrue;
@@ -190,7 +205,7 @@ end;
 
 procedure TRsaPkcs1Sha256Tests.Create_UnsupportedModulusSize_RaisesArgumentError(const HighestBit: Integer);
 begin
-  const Modulus = PowerOfTwo(HighestBit);
+  const Modulus = OddWithHighestBit(HighestBit);
 
   Assert.WillRaise(
     procedure
@@ -202,7 +217,7 @@ end;
 
 procedure TRsaPkcs1Sha256Tests.Create_ModulusAtSizeLimit_IsAccepted(const HighestBit: Integer);
 begin
-  const Modulus = PowerOfTwo(HighestBit);
+  const Modulus = OddWithHighestBit(HighestBit);
 
   const Key = TRsaPublicKey.Create(Modulus, FExponent);
 
@@ -223,6 +238,29 @@ begin
       TRsaPublicKey.Create(Padded, FExponent);
     end,
     ECrypto4DArgumentError);
+end;
+
+procedure TRsaPkcs1Sha256Tests.Create_EvenModulus_RaisesArgumentError;
+begin
+  const Modulus = EvenModulus;
+
+  Assert.WillRaise(
+    procedure
+    begin
+      TRsaPublicKey.Create(Modulus, FExponent);
+    end,
+    ECrypto4DArgumentError);
+end;
+
+procedure TRsaPkcs1Sha256Tests.IsSupportedModulus_EvenModulus_ReturnsFalse;
+begin
+  const Modulus = EvenModulus;
+
+  const OddIsSupported  = TRsaPublicKey.IsSupportedModulus(FModulus);
+  const EvenIsSupported = TRsaPublicKey.IsSupportedModulus(Modulus);
+
+  Assert.IsTrue(OddIsSupported);
+  Assert.IsFalse(EvenIsSupported);
 end;
 
 procedure TRsaPkcs1Sha256Tests.Create_UnsupportedExponent_RaisesArgumentError(const ExponentHex: string);
