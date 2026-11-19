@@ -31,7 +31,9 @@ type
       FlagSmallOrderKey  = 'SmallOrderPublicKey';
       FlagMixedOrderKey  = 'MixedOrderPublicKey';
       MixedOrderFile     = 'wycheproof/ed25519_mixed_order_expected.json';
-      PublicKeyName      = 'publicKey';
+      PointName          = 'publicKey.uncompressed';
+      ResultName         = 'result';
+      TestIdName         = 'tcId';
 
     var
       FMixedOrderAccepted: TArray<Integer>;
@@ -85,7 +87,7 @@ begin
   try
     const Accepted = TTestSupport.ArrayOf(Document, 'verifiesWithCofactorlessEquation');
     SetLength(FMixedOrderAccepted, Accepted.Count);
-    for var Index := 0 to Accepted.Count - 1 do
+    for var Index := 0 to High(FMixedOrderAccepted) do
     begin
       FMixedOrderAccepted[Index] := TTestSupport.IntegerAt(Accepted, Index);
     end;
@@ -99,7 +101,7 @@ begin
   CheckFile('ecdsa_secp256r1_sha256_test.json', 484,
     function(const Group: TJSONObject; const Message, Signature: TBytes): Boolean
     begin
-      const Point = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.uncompressed'));
+      const Point = TTestSupport.BytesOf(Group, PointName);
       const Key   = TEcdsaP256PublicKey.FromUncompressedPoint(Point);
       Result := TEcdsaP256.VerifyDer(Key, Message, Signature);
     end);
@@ -110,7 +112,7 @@ begin
   CheckFile('ecdsa_secp256r1_sha256_p1363_test.json', 262,
     function(const Group: TJSONObject; const Message, Signature: TBytes): Boolean
     begin
-      const Point = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.uncompressed'));
+      const Point = TTestSupport.BytesOf(Group, PointName);
       const Key   = TEcdsaP256PublicKey.FromUncompressedPoint(Point);
       Result := TEcdsaP256.VerifyRaw(Key, Message, Signature);
     end);
@@ -121,7 +123,7 @@ begin
   CheckFile('ed25519_test.json', 210,
     function(const Group: TJSONObject; const Message, Signature: TBytes): Boolean
     begin
-      const Key = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.pk'));
+      const Key = TTestSupport.BytesOf(Group, 'publicKey.pk');
       Result := TEd25519.Verify(Key, Message, Signature);
     end);
 end;
@@ -133,8 +135,8 @@ end;
 
 function TWycheproofTests.VerifyRsa(const Group: TJSONObject; const Message, Signature: TBytes): Boolean;
 begin
-  const Modulus  = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.modulus'));
-  const Exponent = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.publicExponent'));
+  const Modulus  = TTestSupport.BytesOf(Group, 'publicKey.modulus');
+  const Exponent = TTestSupport.BytesOf(Group, 'publicKey.publicExponent');
   const Key      = TRsaPublicKey.Create(Modulus, Exponent);
 
   Result := TRsaPkcs1Sha256.Verify(Key, Message, Signature);
@@ -144,11 +146,13 @@ procedure TWycheproofTests.CheckFile(const FileName: string; const ExpectedTotal
 begin
   const Tally = RunFile(FileName, Verifier);
 
-  TTestSupport.Log(Format('%s: %d vectors (%d valid, %d invalid, acceptable: %d accepted and %d rejected), %d mismatches',
-                          [FileName, Tally.Total, Tally.Valid, Tally.Invalid,
-                           Tally.AcceptableAccepted, Tally.AcceptableRejected, Length(Tally.Mismatches)]));
+  const Summary    = Format('%s: %d vectors (%d valid, %d invalid, acceptable: %d accepted and %d rejected), %d mismatches',
+                            [FileName, Tally.Total, Tally.Valid, Tally.Invalid,
+                             Tally.AcceptableAccepted, Tally.AcceptableRejected, Length(Tally.Mismatches)]);
+  const Mismatches = string.Join('; ', Tally.Mismatches);
+  TTestSupport.Log(Summary);
   Assert.AreEqual(ExpectedTotal, Tally.Total, 'number of vectors');
-  Assert.AreEqual('', string.Join('; ', Tally.Mismatches));
+  Assert.AreEqual('', Mismatches);
 end;
 
 function TWycheproofTests.RunFile(const FileName: string; const Verifier: TWycheproofVerifier): TWycheproofTally;
@@ -158,9 +162,9 @@ begin
   const Document = TTestSupport.LoadJsonObject(Folder + FileName);
   try
     const Groups = TTestSupport.ArrayOf(Document, 'testGroups');
-    for var Index := 0 to Groups.Count - 1 do
+    for var Item in Groups do
     begin
-      const Group = TTestSupport.ObjectAt(Groups, Index);
+      const Group = Item as TJSONObject;
       RunGroup(Group, Verifier, Result);
     end;
   finally
@@ -171,11 +175,11 @@ end;
 procedure TWycheproofTests.RunGroup(const Group: TJSONObject; const Verifier: TWycheproofVerifier; var Tally: TWycheproofTally);
 begin
   const Tests = TTestSupport.ArrayOf(Group, 'tests');
-  for var Index := 0 to Tests.Count - 1 do
+  for var Item in Tests do
   begin
-    const Test      = TTestSupport.ObjectAt(Tests, Index);
-    const Message   = TTestSupport.HexToBytes(Test.GetValue<string>('msg'));
-    const Signature = TTestSupport.HexToBytes(Test.GetValue<string>('sig'));
+    const Test      = Item as TJSONObject;
+    const Message   = TTestSupport.BytesOf(Test, 'msg');
+    const Signature = TTestSupport.BytesOf(Test, 'sig');
     const Verified  = Verifier(Group, Message, Signature);
 
     CountTest(Test, Verified, Tally);
@@ -184,38 +188,45 @@ end;
 
 procedure TWycheproofTests.CountTest(const Test: TJSONObject; const Verified: Boolean; var Tally: TWycheproofTally);
 begin
-  const Outcome = Test.GetValue<string>('result');
+  const Outcome   = Test.GetValue<string>(ResultName);
+  const IsValid   = (Outcome = ResultValid);
+  const IsInvalid = (Outcome = ResultInvalid);
   Inc(Tally.Total);
-  if Outcome = ResultValid then
+  if IsValid then
     Inc(Tally.Valid)
-  else if Outcome = ResultInvalid then
+  else if IsInvalid then
     Inc(Tally.Invalid)
   else if Verified then
     Inc(Tally.AcceptableAccepted)
   else
     Inc(Tally.AcceptableRejected);
 
-  const Expected = IsExpectedToVerify(Test);
-  if Verified <> Expected then
+  const Expected     = IsExpectedToVerify(Test);
+  const IsUnexpected = (Verified <> Expected);
+  if IsUnexpected then
   begin
-    const Mismatch = Format('tcId %d (%s, "%s") verified=%s',
-                            [Test.GetValue<Integer>('tcId'), Outcome, Test.GetValue<string>('comment'),
-                             BoolToStr(Verified, True)]);
+    const TestId       = Test.GetValue<Integer>(TestIdName);
+    const Comment      = Test.GetValue<string>('comment');
+    const VerifiedText = BoolToStr(Verified, True);
+    const Mismatch     = Format('tcId %d (%s, "%s") verified=%s', [TestId, Outcome, Comment, VerifiedText]);
     Tally.Mismatches := Tally.Mismatches + [Mismatch];
   end;
 end;
 
 function TWycheproofTests.IsExpectedToVerify(const Test: TJSONObject): Boolean;
 begin
-  const Outcome = Test.GetValue<string>('result');
-  if Outcome = ResultValid then
+  const Outcome      = Test.GetValue<string>(ResultName);
+  const IsValid      = (Outcome = ResultValid);
+  const IsInvalid    = (Outcome = ResultInvalid);
+  const IsAcceptable = (Outcome = ResultAcceptable);
+  if IsValid then
     Exit(True);
-  if Outcome = ResultInvalid then
+  if IsInvalid then
     Exit(False);
-  if Outcome = ResultAcceptable then
-    Exit(AcceptableIsExpectedToVerify(Test));
+  if not IsAcceptable then
+    raise ETestSupportError.CreateFmt('Unknown Wycheproof result "%s"', [Outcome]);
 
-  raise ETestSupportError.CreateFmt('Unknown Wycheproof result "%s"', [Outcome]);
+  Result := AcceptableIsExpectedToVerify(Test);
 end;
 
 function TWycheproofTests.AcceptableIsExpectedToVerify(const Test: TJSONObject): Boolean;
@@ -225,26 +236,27 @@ begin
   if HasFlag(Test, FlagSmallOrderKey) then
     Exit(False);
 
-  if HasFlag(Test, FlagMixedOrderKey) then
+  const TestId = Test.GetValue<Integer>(TestIdName);
+  if not HasFlag(Test, FlagMixedOrderKey) then
+    raise ETestSupportError.CreateFmt('No policy for acceptable Wycheproof vector %d', [TestId]);
+
+  for var AcceptedId in FMixedOrderAccepted do
   begin
-    const TestId = Test.GetValue<Integer>('tcId');
-    for var AcceptedId in FMixedOrderAccepted do
-    begin
-      if AcceptedId = TestId then
-        Exit(True);
-    end;
-    Exit(False);
+    const IsAccepted = (AcceptedId = TestId);
+    if IsAccepted then
+      Exit(True);
   end;
 
-  raise ETestSupportError.CreateFmt('No policy for acceptable Wycheproof vector %d', [Test.GetValue<Integer>('tcId')]);
+  Result := False;
 end;
 
 function TWycheproofTests.HasFlag(const Test: TJSONObject; const Flag: string): Boolean;
 begin
   const Flags = TTestSupport.ArrayOf(Test, 'flags');
-  for var Index := 0 to Flags.Count - 1 do
+  for var Item in Flags do
   begin
-    if TTestSupport.StringAt(Flags, Index) = Flag then
+    const IsWanted = (Item.Value = Flag);
+    if IsWanted then
       Exit(True);
   end;
 

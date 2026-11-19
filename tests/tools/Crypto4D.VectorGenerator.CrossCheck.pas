@@ -63,6 +63,8 @@ type
       DerIntegerTag    = $02;
       DerSequenceTag   = $30;
       SignBit          = $80;
+      HexDigitsPerByte = 2;
+      AlgorithmName    = 'algorithm';
 
     var
       FTool: TOpenSslTool;
@@ -83,6 +85,10 @@ type
     function RandomMutation(const Family: TSignatureFamily): TMutation;
     function BuildCase(const Index: Integer): TGeneratedCase;
     procedure Mutate(const Family: TSignatureFamily; const BitSeed: Cardinal; var Generated: TGeneratedCase);
+    procedure MutateSignature(const IsEcdsa: Boolean; const BitSeed: Cardinal; var Generated: TGeneratedCase);
+    procedure MutateDerSignature(const BitSeed: Cardinal; var Generated: TGeneratedCase);
+    function ChangedMessage(const Message: TBytes; const BitSeed: Cardinal): TBytes;
+    function DamageRsaKey(const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
     function DamageKey(const Family: TSignatureFamily; const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
     function FindRsaModulus(const PublicKey: TBytes; out Offset, Count: Integer): Boolean;
     function FlipBit(const Bytes: TBytes; const Start, Count: Integer; const BitSeed: Cardinal): TBytes;
@@ -114,6 +120,7 @@ uses
 
 resourcestring
   UnknownMutation       = 'Unknown mutation %d';
+  UnknownFamily         = 'Unknown signature family %d';
   OwnSignatureRejected  = 'OpenSSL did not verify its own signature in case %d: %s';
   UnreadableSignature   = 'OpenSSL wrote an ECDSA signature that is not a DER sequence of two integers';
   ModulusNotFound       = 'The RSA modulus was not found in the public key';
@@ -194,12 +201,14 @@ begin
   const FirstKeyIndex = Length(FKeys);
   for var KeyNumber := 1 to Plan.KeyCount do
   begin
-    FKeys := FKeys + [GenerateKey(Plan)];
+    const Key = GenerateKey(Plan);
+    FKeys := FKeys + [Key];
   end;
 
   for var CaseNumber := 1 to Plan.CaseCount do
   begin
-    FPlans := FPlans + [PlanCase(Plan, FirstKeyIndex)];
+    const Planned = PlanCase(Plan, FirstKeyIndex);
+    FPlans := FPlans + [Planned];
   end;
 end;
 
@@ -248,7 +257,8 @@ begin
   if HasDerSignature then
     Choices := Choices + [TMutation.SignatureDer];
 
-  Result := Choices[Random(Length(Choices))];
+  const Choice = Random(Length(Choices));
+  Result := Choices[Choice];
 end;
 
 function TCrossCheckGenerator.BuildCase(const Index: Integer): TGeneratedCase;
@@ -291,51 +301,64 @@ begin
     Generated.RawSignature := RawFromDer(Generated.Signature);
 
   case Generated.Mutation of
-    TMutation.None:
-      Exit;
-    TMutation.Signature:
-      if IsEcdsa then
-      begin
-        Generated.RawSignature := FlipBit(Generated.RawSignature, 0, Length(Generated.RawSignature), BitSeed);
-        Generated.Signature    := DerFromRaw(Generated.RawSignature);
-      end
-      else
-      begin
-        Generated.Signature := FlipBit(Generated.Signature, 0, Length(Generated.Signature), BitSeed);
-      end;
-    TMutation.SignatureDer:
-      begin
-        Generated.Signature    := FlipBit(Generated.Signature, 0, Length(Generated.Signature), BitSeed);
-        Generated.RawSignature := nil;
-      end;
-    TMutation.Message:
-      if Length(Generated.Message) = 0 then
-        Generated.Message := TBytes.Create(0)
-      else
-        Generated.Message := FlipBit(Generated.Message, 0, Length(Generated.Message), BitSeed);
-    TMutation.Key:
-      Generated.PublicKey := DamageKey(Family, Generated.PublicKey, BitSeed);
+    TMutation.None         : Exit;
+    TMutation.Signature    : MutateSignature(IsEcdsa, BitSeed, Generated);
+    TMutation.SignatureDer : MutateDerSignature(BitSeed, Generated);
+    TMutation.Message      : Generated.Message := ChangedMessage(Generated.Message, BitSeed);
+    TMutation.Key          : Generated.PublicKey := DamageKey(Family, Generated.PublicKey, BitSeed);
   else
     raise ECrossCheckGeneratorError.CreateFmt(UnknownMutation, [Ord(Generated.Mutation)]);
   end;
+end;
+
+procedure TCrossCheckGenerator.MutateSignature(const IsEcdsa: Boolean; const BitSeed: Cardinal; var Generated: TGeneratedCase);
+begin
+  if IsEcdsa then
+  begin
+    Generated.RawSignature := FlipBit(Generated.RawSignature, 0, Length(Generated.RawSignature), BitSeed);
+    Generated.Signature    := DerFromRaw(Generated.RawSignature);
+  end
+  else
+  begin
+    Generated.Signature := FlipBit(Generated.Signature, 0, Length(Generated.Signature), BitSeed);
+  end;
+end;
+
+procedure TCrossCheckGenerator.MutateDerSignature(const BitSeed: Cardinal; var Generated: TGeneratedCase);
+begin
+  Generated.Signature    := FlipBit(Generated.Signature, 0, Length(Generated.Signature), BitSeed);
+  Generated.RawSignature := nil;
+end;
+
+function TCrossCheckGenerator.ChangedMessage(const Message: TBytes; const BitSeed: Cardinal): TBytes;
+begin
+  const IsEmpty = (Length(Message) = 0);
+  if IsEmpty then
+    Exit(TBytes.Create(0));
+
+  Result := FlipBit(Message, 0, Length(Message), BitSeed);
 end;
 
 function TCrossCheckGenerator.DamageKey(const Family: TSignatureFamily; const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
 begin
   const KeyLength = Length(PublicKey);
   case Family of
-    TSignatureFamily.Ecdsa:
-      Result := FlipBit(PublicKey, KeyLength - P256PointBytes, P256PointBytes, BitSeed);
-    TSignatureFamily.EdDsa:
-      Result := FlipBit(PublicKey, KeyLength - Ed25519KeyBytes, Ed25519KeyBytes, BitSeed);
+    TSignatureFamily.Ecdsa : Result := FlipBit(PublicKey, KeyLength - P256PointBytes, P256PointBytes, BitSeed);
+    TSignatureFamily.EdDsa : Result := FlipBit(PublicKey, KeyLength - Ed25519KeyBytes, Ed25519KeyBytes, BitSeed);
+    TSignatureFamily.Rsa   : Result := DamageRsaKey(PublicKey, BitSeed);
   else
-    var Offset: Integer;
-    var Count: Integer;
-    if not FindRsaModulus(PublicKey, Offset, Count) then
-      raise ECrossCheckGeneratorError.Create(ModulusNotFound);
-
-    Result := FlipBit(PublicKey, Offset + 1, Count - 1, BitSeed);
+    raise ECrossCheckGeneratorError.CreateFmt(UnknownFamily, [Ord(Family)]);
   end;
+end;
+
+function TCrossCheckGenerator.DamageRsaKey(const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
+begin
+  var Offset: Integer;
+  var Count: Integer;
+  if not FindRsaModulus(PublicKey, Offset, Count) then
+    raise ECrossCheckGeneratorError.Create(ModulusNotFound);
+
+  Result := FlipBit(PublicKey, Offset + 1, Count - 1, BitSeed);
 end;
 
 function TCrossCheckGenerator.FindRsaModulus(const PublicKey: TBytes; out Offset, Count: Integer): Boolean;
@@ -396,9 +419,11 @@ begin
   if not IsReadable then
     raise ECrossCheckGeneratorError.Create(UnreadableSignature);
 
-  const R = TBigInteger.FromBytes(RBytes);
-  const S = TBigInteger.FromBytes(SBytes);
-  Result := R.ToFixedBytes(P256ValueBytes) + S.ToFixedBytes(P256ValueBytes);
+  const R      = TBigInteger.FromBytes(RBytes);
+  const S      = TBigInteger.FromBytes(SBytes);
+  const FixedR = R.ToFixedBytes(P256ValueBytes);
+  const FixedS = S.ToFixedBytes(P256ValueBytes);
+  Result := FixedR + FixedS;
 end;
 
 function TCrossCheckGenerator.DerFromRaw(const RawSignature: TBytes): TBytes;
@@ -433,7 +458,7 @@ begin
   for var Key in FKeys do
   begin
     const KeyObject = TJSONObject.Create;
-    KeyObject.AddPair('algorithm', Key.Name);
+    KeyObject.AddPair(AlgorithmName, Key.Name);
     KeyObject.AddPair('publicKey', ToHex(Key.PublicKey));
     Keys.AddElement(KeyObject);
   end;
@@ -441,7 +466,8 @@ begin
   const Cases = TJSONArray.Create;
   for var Generated in FCases do
   begin
-    Cases.AddElement(CaseToJson(Generated));
+    const CaseObject = CaseToJson(Generated);
+    Cases.AddElement(CaseObject);
   end;
 
   Result := TJSONObject.Create;
@@ -458,7 +484,7 @@ begin
   const Expected = (Generated.Verdict = TOpenSslVerdict.Verified);
 
   Result := TJSONObject.Create;
-  Result.AddPair('algorithm', Key.Name);
+  Result.AddPair(AlgorithmName, Key.Name);
   Result.AddPair('key', TJSONNumber.Create(Generated.KeyIndex));
   Result.AddPair('mutation', Generated.Mutation.Text);
   Result.AddPair('message', ToHex(Generated.Message));
@@ -477,11 +503,12 @@ end;
 
 function TCrossCheckGenerator.ToHex(const Bytes: TBytes): string;
 begin
-  const Builder = TStringBuilder.Create(Length(Bytes) * 2);
+  const Builder = TStringBuilder.Create(Length(Bytes) * HexDigitsPerByte);
   try
     for var Value in Bytes do
     begin
-      Builder.Append(IntToHex(Value, 2).ToLower);
+      const UpperCaseDigits = IntToHex(Value, HexDigitsPerByte);
+      Builder.Append(UpperCaseDigits.ToLower);
     end;
     Result := Builder.ToString;
   finally
@@ -505,11 +532,15 @@ begin
 
       const HasCases = (Count > 0);
       if HasCases then
-        System.Writeln(Format('%-14s %-22s %5d', [Mutation.Text, Verdict.Text, Count]));
+      begin
+        const Line = Format('%-14s %-22s %5d', [Mutation.Text, Verdict.Text, Count]);
+        System.Writeln(Line);
+      end;
     end;
   end;
 
-  System.Writeln(Format('%d keys, %d cases', [Length(FKeys), Length(FCases)]));
+  const Totals = Format('%d keys, %d cases', [Length(FKeys), Length(FCases)]);
+  System.Writeln(Totals);
 end;
 
 end.

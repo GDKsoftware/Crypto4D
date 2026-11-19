@@ -15,8 +15,15 @@ type
   TBenchmarkTests = class
   private
     const
-      Repetitions = 20;
+      Repetitions      = 20;
+      WycheproofFolder = 'wycheproof/';
+      GroupsName       = 'testGroups';
+      TestsName        = 'tests';
+      MessageName      = 'msg';
+      SignatureName    = 'sig';
 
+    function FirstGroup(const Document: TJSONObject): TJSONObject;
+    function FirstTest(const Group: TJSONObject): TJSONObject;
     procedure Measure(const Name: string; const Verification: TVerification);
     procedure MeasureRsa(const FileName: string);
 
@@ -51,14 +58,28 @@ begin
   const OverflowChecks = {$IFOPT Q+}True{$ELSE}False{$ENDIF};
   const RangeChecks    = {$IFOPT R+}True{$ELSE}False{$ENDIF};
 
-  TTestSupport.Log(Format('overflow checks: %s, range checks: %s',
-                          [BoolToStr(OverflowChecks, True), BoolToStr(RangeChecks, True)]));
+  const OverflowText = BoolToStr(OverflowChecks, True);
+  const RangeText    = BoolToStr(RangeChecks, True);
+  const Settings     = Format('overflow checks: %s, range checks: %s', [OverflowText, RangeText]);
+  TTestSupport.Log(Settings);
   {$IFDEF DEBUG}
   Assert.IsTrue(OverflowChecks, 'overflow checks');
   Assert.IsTrue(RangeChecks, 'range checks');
   {$ELSE}
   Assert.Pass;
   {$ENDIF}
+end;
+
+function TBenchmarkTests.FirstGroup(const Document: TJSONObject): TJSONObject;
+begin
+  const Groups = TTestSupport.ArrayOf(Document, GroupsName);
+  Result := TTestSupport.ObjectAt(Groups, 0);
+end;
+
+function TBenchmarkTests.FirstTest(const Group: TJSONObject): TJSONObject;
+begin
+  const Tests = TTestSupport.ArrayOf(Group, TestsName);
+  Result := TTestSupport.ObjectAt(Tests, 0);
 end;
 
 procedure TBenchmarkTests.Measure(const Name: string; const Verification: TVerification);
@@ -71,22 +92,24 @@ begin
   end;
   Watch.Stop;
 
-  const MillisecondsEach = Watch.Elapsed.TotalMilliseconds / Repetitions;
-  TTestSupport.Log(Format('%s: %.3f ms per verification (%d runs)', [Name, MillisecondsEach, Repetitions],
-                          TFormatSettings.Invariant));
+  const Elapsed          = Watch.Elapsed;
+  const MillisecondsEach = Elapsed.TotalMilliseconds / Repetitions;
+  const Timing           = Format('%s: %.3f ms per verification (%d runs)', [Name, MillisecondsEach, Repetitions],
+                                  TFormatSettings.Invariant);
+  TTestSupport.Log(Timing);
   Assert.IsTrue(AllVerified, Name);
 end;
 
 procedure TBenchmarkTests.EcdsaP256_Verify_ReportsTimePerVerification;
 begin
-  const Document = TTestSupport.LoadJsonObject('wycheproof/ecdsa_secp256r1_sha256_test.json');
+  const Document = TTestSupport.LoadJsonObject(WycheproofFolder + 'ecdsa_secp256r1_sha256_test.json');
   try
-    const Group     = TTestSupport.ObjectAt(TTestSupport.ArrayOf(Document, 'testGroups'), 0);
-    const Test      = TTestSupport.ObjectAt(TTestSupport.ArrayOf(Group, 'tests'), 0);
-    const Point     = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.uncompressed'));
+    const Group     = FirstGroup(Document);
+    const Test      = FirstTest(Group);
+    const Point     = TTestSupport.BytesOf(Group, 'publicKey.uncompressed');
     const Key       = TEcdsaP256PublicKey.FromUncompressedPoint(Point);
-    const Message   = TTestSupport.HexToBytes(Test.GetValue<string>('msg'));
-    const Signature = TTestSupport.HexToBytes(Test.GetValue<string>('sig'));
+    const Message   = TTestSupport.BytesOf(Test, MessageName);
+    const Signature = TTestSupport.BytesOf(Test, SignatureName);
 
     Measure('ECDSA P-256 SHA-256',
       function: Boolean
@@ -102,10 +125,11 @@ procedure TBenchmarkTests.Ed25519_Verify_ReportsTimePerVerification;
 begin
   const Document = TTestSupport.LoadJsonObject('rfc8032/ed25519.json');
   try
-    const Vector    = TTestSupport.ObjectAt(TTestSupport.ArrayOf(Document, 'vectors'), 2);
-    const Key       = TTestSupport.HexToBytes(Vector.GetValue<string>('publicKey'));
-    const Message   = TTestSupport.HexToBytes(Vector.GetValue<string>('message'));
-    const Signature = TTestSupport.HexToBytes(Vector.GetValue<string>('signature'));
+    const Vectors   = TTestSupport.ArrayOf(Document, 'vectors');
+    const Vector    = TTestSupport.ObjectAt(Vectors, 2);
+    const Key       = TTestSupport.BytesOf(Vector, 'publicKey');
+    const Message   = TTestSupport.BytesOf(Vector, 'message');
+    const Signature = TTestSupport.BytesOf(Vector, 'signature');
 
     Measure('Ed25519',
       function: Boolean
@@ -124,17 +148,19 @@ end;
 
 procedure TBenchmarkTests.MeasureRsa(const FileName: string);
 begin
-  const Document = TTestSupport.LoadJsonObject('wycheproof/' + FileName);
+  const Document = TTestSupport.LoadJsonObject(WycheproofFolder + FileName);
   try
-    const Group     = TTestSupport.ObjectAt(TTestSupport.ArrayOf(Document, 'testGroups'), 0);
-    const Test      = TTestSupport.ObjectAt(TTestSupport.ArrayOf(Group, 'tests'), 0);
-    const Modulus   = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.modulus'));
-    const Exponent  = TTestSupport.HexToBytes(Group.GetValue<string>('publicKey.publicExponent'));
+    const Group     = FirstGroup(Document);
+    const Test      = FirstTest(Group);
+    const Modulus   = TTestSupport.BytesOf(Group, 'publicKey.modulus');
+    const Exponent  = TTestSupport.BytesOf(Group, 'publicKey.publicExponent');
     const Key       = TRsaPublicKey.Create(Modulus, Exponent);
-    const Message   = TTestSupport.HexToBytes(Test.GetValue<string>('msg'));
-    const Signature = TTestSupport.HexToBytes(Test.GetValue<string>('sig'));
+    const Message   = TTestSupport.BytesOf(Test, MessageName);
+    const Signature = TTestSupport.BytesOf(Test, SignatureName);
+    const KeySize   = Group.GetValue<Integer>('keySize');
+    const Name      = Format('RSA PKCS#1 v1.5 SHA-256, %d bit', [KeySize]);
 
-    Measure(Format('RSA PKCS#1 v1.5 SHA-256, %d bit', [Group.GetValue<Integer>('keySize')]),
+    Measure(Name,
       function: Boolean
       begin
         Result := TRsaPkcs1Sha256.Verify(Key, Message, Signature);

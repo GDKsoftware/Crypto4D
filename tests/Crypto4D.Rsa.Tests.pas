@@ -108,10 +108,10 @@ begin
     const Tests  = TTestSupport.ArrayOf(Group, TestsName);
     const Test   = TTestSupport.ObjectAt(Tests, 0);
 
-    FModulus   := TTestSupport.HexToBytes(Group.GetValue<string>(ModulusName));
-    FExponent  := TTestSupport.HexToBytes(Group.GetValue<string>(ExponentName));
-    FMessage   := TTestSupport.HexToBytes(Test.GetValue<string>(MessageName));
-    FSignature := TTestSupport.HexToBytes(Test.GetValue<string>(SignatureName));
+    FModulus   := TTestSupport.BytesOf(Group, ModulusName);
+    FExponent  := TTestSupport.BytesOf(Group, ExponentName);
+    FMessage   := TTestSupport.BytesOf(Test, MessageName);
+    FSignature := TTestSupport.BytesOf(Test, SignatureName);
   finally
     Document.Free;
   end;
@@ -206,7 +206,9 @@ begin
 
   const Key = TRsaPublicKey.Create(Modulus, FExponent);
 
-  Assert.AreEqual(TTestSupport.BytesToHex(Modulus), TTestSupport.BytesToHex(Key.Modulus));
+  const ExpectedHex = TTestSupport.BytesToHex(Modulus);
+  const ActualHex   = TTestSupport.BytesToHex(Key.Modulus);
+  Assert.AreEqual(ExpectedHex, ActualHex);
 end;
 
 procedure TRsaPkcs1Sha256Tests.Create_ModulusWithLeadingZeros_CountsSignificantBits;
@@ -241,7 +243,8 @@ begin
 
   const Key = TRsaPublicKey.Create(FModulus, Exponent);
 
-  Assert.AreEqual(ExponentHex, TTestSupport.BytesToHex(Key.Exponent));
+  const ActualHex = TTestSupport.BytesToHex(Key.Exponent);
+  Assert.AreEqual(ExponentHex, ActualHex);
 end;
 
 procedure TRsaPkcs1Sha256Tests.Verify_ExponentThree_ReturnsTrue;
@@ -252,16 +255,18 @@ begin
     const Group     = TTestSupport.ObjectAt(Groups, 1);
     const Tests     = TTestSupport.ArrayOf(Group, TestsName);
     const Test      = TTestSupport.ObjectAt(Tests, 0);
-    const Modulus   = TTestSupport.HexToBytes(Group.GetValue<string>(ModulusName));
-    const Exponent  = TTestSupport.HexToBytes(Group.GetValue<string>(ExponentName));
-    const Message   = TTestSupport.HexToBytes(Test.GetValue<string>(MessageName));
-    const Signature = TTestSupport.HexToBytes(Test.GetValue<string>(SignatureName));
+    const Modulus   = TTestSupport.BytesOf(Group, ModulusName);
+    const Exponent  = TTestSupport.BytesOf(Group, ExponentName);
+    const Message   = TTestSupport.BytesOf(Test, MessageName);
+    const Signature = TTestSupport.BytesOf(Test, SignatureName);
     const Key       = TRsaPublicKey.Create(Modulus, Exponent);
 
     const Verified = TRsaPkcs1Sha256.Verify(Key, Message, Signature);
 
-    Assert.AreEqual('03', TTestSupport.BytesToHex(Exponent));
-    Assert.AreEqual('valid', Test.GetValue<string>('result'));
+    const ExponentHex = TTestSupport.BytesToHex(Exponent);
+    const Outcome     = Test.GetValue<string>('result');
+    Assert.AreEqual('03', ExponentHex);
+    Assert.AreEqual('valid', Outcome);
     Assert.IsTrue(Verified);
   finally
     Document.Free;
@@ -270,7 +275,8 @@ end;
 
 procedure TRsaPkcs1Sha256Tests.Verify_OtherOddExponent_ReturnsFalse;
 begin
-  const Key = TRsaPublicKey.Create(FModulus, TBytes.Create(3));
+  const OtherExponent = TBytes.Create(3);
+  const Key           = TRsaPublicKey.Create(FModulus, OtherExponent);
 
   const Verified = TRsaPkcs1Sha256.Verify(Key, FMessage, FSignature);
 

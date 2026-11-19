@@ -15,9 +15,12 @@ type
       Rfc8032File         = 'rfc8032/ed25519.json';
       OrderHex            = '1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed';
       IdentityKeyHex      = '0100000000000000000000000000000000000000000000000000000000000000';
-      NonCanonicalZeroHex = 'edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f';
-      NegativeZeroXHex    = '0100000000000000000000000000000000000000000000000000000000000080';
       ScalarSize          = 32;
+      VectorsName         = 'vectors';
+      PublicKeyName       = 'publicKey';
+      MessageName         = 'message';
+      SignatureName       = 'signature';
+      ExpectedVectors     = 5;
 
     var
       FPublicKey: TBytes;
@@ -80,11 +83,11 @@ procedure TEd25519Tests.SetupFixture;
 begin
   const Document = TTestSupport.LoadJsonObject(Rfc8032File);
   try
-    const Vectors = TTestSupport.ArrayOf(Document, 'vectors');
+    const Vectors = TTestSupport.ArrayOf(Document, VectorsName);
     const Vector  = TTestSupport.ObjectAt(Vectors, 2);
-    FPublicKey := TTestSupport.HexToBytes(Vector.GetValue<string>('publicKey'));
-    FMessage   := TTestSupport.HexToBytes(Vector.GetValue<string>('message'));
-    FSignature := TTestSupport.HexToBytes(Vector.GetValue<string>('signature'));
+    FPublicKey := TTestSupport.BytesOf(Vector, PublicKeyName);
+    FMessage   := TTestSupport.BytesOf(Vector, MessageName);
+    FSignature := TTestSupport.BytesOf(Vector, SignatureName);
   finally
     Document.Free;
   end;
@@ -102,32 +105,37 @@ end;
 
 function TEd25519Tests.SignatureWithScalarPlusOrder: TBytes;
 begin
-  const ScalarBytes  = Copy(FSignature, ScalarSize, ScalarSize);
-  const Scalar       = TBigInteger.FromBytes(ReverseBytes(ScalarBytes));
-  const Raised       = Scalar + TBigInteger.FromHex(OrderHex);
-  const RaisedBytes  = ReverseBytes(Raised.ToFixedBytes(ScalarSize));
+  const EncodedR      = Copy(FSignature, 0, ScalarSize);
+  const ScalarBytes   = Copy(FSignature, ScalarSize, ScalarSize);
+  const BigEndian     = ReverseBytes(ScalarBytes);
+  const Scalar        = TBigInteger.FromBytes(BigEndian);
+  const Order         = TBigInteger.FromHex(OrderHex);
+  const Raised        = Scalar + Order;
+  const RaisedBytes   = Raised.ToFixedBytes(ScalarSize);
+  const EncodedRaised = ReverseBytes(RaisedBytes);
 
-  Result := Copy(FSignature, 0, ScalarSize) + RaisedBytes;
+  Result := EncodedR + EncodedRaised;
 end;
 
 procedure TEd25519Tests.Verify_Rfc8032Vectors_ReturnTrue;
 begin
   const Document = TTestSupport.LoadJsonObject(Rfc8032File);
   try
-    const Vectors = TTestSupport.ArrayOf(Document, 'vectors');
-    for var Index := 0 to Vectors.Count - 1 do
+    const Vectors = TTestSupport.ArrayOf(Document, VectorsName);
+    for var Item in Vectors do
     begin
-      const Vector    = TTestSupport.ObjectAt(Vectors, Index);
-      const PublicKey = TTestSupport.HexToBytes(Vector.GetValue<string>('publicKey'));
-      const Message   = TTestSupport.HexToBytes(Vector.GetValue<string>('message'));
-      const Signature = TTestSupport.HexToBytes(Vector.GetValue<string>('signature'));
+      const Vector     = Item as TJSONObject;
+      const VectorName = Vector.GetValue<string>('name');
+      const PublicKey  = TTestSupport.BytesOf(Vector, PublicKeyName);
+      const Message    = TTestSupport.BytesOf(Vector, MessageName);
+      const Signature  = TTestSupport.BytesOf(Vector, SignatureName);
 
       const Verified = TEd25519.Verify(PublicKey, Message, Signature);
 
-      Assert.IsTrue(Verified, Vector.GetValue<string>('name'));
+      Assert.IsTrue(Verified, VectorName);
     end;
 
-    Assert.AreEqual(5, Vectors.Count);
+    Assert.AreEqual(ExpectedVectors, Vectors.Count);
   finally
     Document.Free;
   end;

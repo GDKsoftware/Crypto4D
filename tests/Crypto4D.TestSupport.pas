@@ -12,9 +12,11 @@ type
   TTestSupport = class
   private
     const
-      VectorsFolder   = 'vectors';
-      TestsFolder     = 'tests';
-      HexDigitsPerByte = 2;
+      VectorsFolder     = 'vectors';
+      TestsFolder       = 'tests';
+      HexDigitsPerByte  = 2;
+      DerShortFormLimit = $80;
+      DerLongFormFlag   = $80;
 
     class function FindVectorsRoot: string; static;
     class function HexDigitValue(const Digit: Char): Byte; static;
@@ -25,11 +27,12 @@ type
     class function ArrayOf(const Parent: TJSONObject; const Name: string): TJSONArray; static;
     class function ObjectAt(const Items: TJSONArray; const Index: Integer): TJSONObject; static;
     class function IntegerAt(const Items: TJSONArray; const Index: Integer): Integer; static;
-    class function StringAt(const Items: TJSONArray; const Index: Integer): string; static;
     class function LoadBytes(const RelativePath: string): TBytes; static;
+    class function BytesOf(const Source: TJSONObject; const Name: string): TBytes; static;
     class function HexToBytes(const Hex: string): TBytes; static;
     class function BytesToHex(const Bytes: TBytes): string; static;
     class function FlipBit(const Bytes: TBytes; const BitIndex: Integer): TBytes; static;
+    class function DerElement(const Tag: Byte; const Content: TBytes): TBytes; static;
     class procedure Log(const Text: string); static;
   end;
 
@@ -108,14 +111,16 @@ begin
   Result := Items.Items[Index].GetValue<Integer>;
 end;
 
-class function TTestSupport.StringAt(const Items: TJSONArray; const Index: Integer): string;
-begin
-  Result := Items.Items[Index].Value;
-end;
-
 class function TTestSupport.LoadBytes(const RelativePath: string): TBytes;
 begin
-  Result := TFile.ReadAllBytes(VectorFile(RelativePath));
+  const FileName = VectorFile(RelativePath);
+  Result := TFile.ReadAllBytes(FileName);
+end;
+
+class function TTestSupport.BytesOf(const Source: TJSONObject; const Name: string): TBytes;
+begin
+  const Hex = Source.GetValue<string>(Name);
+  Result := HexToBytes(Hex);
 end;
 
 class function TTestSupport.HexToBytes(const Hex: string): TBytes;
@@ -150,7 +155,8 @@ begin
   try
     for var Value in Bytes do
     begin
-      Builder.Append(IntToHex(Value, HexDigitsPerByte).ToLower);
+      const UpperCaseDigits = IntToHex(Value, HexDigitsPerByte);
+      Builder.Append(UpperCaseDigits.ToLower);
     end;
     Result := Builder.ToString;
   finally
@@ -164,6 +170,25 @@ begin
   const ByteIndex = BitIndex div 8;
   const Mask: Byte = 1 shl (BitIndex mod 8);
   Result[ByteIndex] := Result[ByteIndex] xor Mask;
+end;
+
+class function TTestSupport.DerElement(const Tag: Byte; const Content: TBytes): TBytes;
+begin
+  const ContentLength = Length(Content);
+  const UsesShortForm = (ContentLength < DerShortFormLimit);
+  if UsesShortForm then
+    Exit(TBytes.Create(Tag, Byte(ContentLength)) + Content);
+
+  var LengthOctets: TBytes := nil;
+  var Remaining := ContentLength;
+  while Remaining > 0 do
+  begin
+    LengthOctets := TBytes.Create(Byte(Remaining and $FF)) + LengthOctets;
+    Remaining    := Remaining shr 8;
+  end;
+
+  const LengthPrefix = Byte(DerLongFormFlag or Length(LengthOctets));
+  Result := TBytes.Create(Tag, LengthPrefix) + LengthOctets + Content;
 end;
 
 class procedure TTestSupport.Log(const Text: string);

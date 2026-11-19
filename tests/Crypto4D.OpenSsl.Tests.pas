@@ -86,11 +86,14 @@ procedure TOpenSslCrossCheckTests.Verify_OpenSslCases_AgreeWithOpenSsl(const Fam
 begin
   const Tally = RunFamily(Family);
 
-  TTestSupport.Log(Format('%s: %d OpenSSL cases (%d verify, %d do not), %d mismatches',
-                          [Family, Tally.Total, Tally.ExpectedToVerify,
-                           Tally.Total - Tally.ExpectedToVerify, Length(Tally.Mismatches)]));
-  Assert.IsTrue(Tally.Total > 0, 'no cases for this algorithm');
-  Assert.AreEqual('', string.Join('; ', Tally.Mismatches));
+  const ExpectedToFail = Tally.Total - Tally.ExpectedToVerify;
+  const Summary        = Format('%s: %d OpenSSL cases (%d verify, %d do not), %d mismatches',
+                                [Family, Tally.Total, Tally.ExpectedToVerify, ExpectedToFail, Length(Tally.Mismatches)]);
+  const Mismatches     = string.Join('; ', Tally.Mismatches);
+  const HasCases       = (Tally.Total > 0);
+  TTestSupport.Log(Summary);
+  Assert.IsTrue(HasCases, 'no cases for this algorithm');
+  Assert.AreEqual('', Mismatches);
 end;
 
 function TOpenSslCrossCheckTests.RunFamily(const Family: string): TCrossCheckTally;
@@ -111,10 +114,12 @@ begin
     if Expected then
       Inc(Result.ExpectedToVerify);
 
-    if Actual <> Expected then
+    const IsUnexpected = (Actual <> Expected);
+    if IsUnexpected then
     begin
-      const Mismatch = Format('case %d (%s, %s) verified=%s',
-                              [Index, Algorithm, TestCase.GetValue<string>('mutation'), BoolToStr(Actual, True)]);
+      const Mutation   = TestCase.GetValue<string>('mutation');
+      const ActualText = BoolToStr(Actual, True);
+      const Mismatch   = Format('case %d (%s, %s) verified=%s', [Index, Algorithm, Mutation, ActualText]);
       Result.Mismatches := Result.Mismatches + [Mismatch];
     end;
   end;
@@ -125,7 +130,8 @@ begin
   var KeyHex: string;
   if not TestCase.TryGetValue<string>('damagedKey', KeyHex) then
   begin
-    const Key = TTestSupport.ObjectAt(FKeys, TestCase.GetValue<Integer>('key'));
+    const KeyIndex = TestCase.GetValue<Integer>('key');
+    const Key      = TTestSupport.ObjectAt(FKeys, KeyIndex);
     KeyHex := Key.GetValue<string>('publicKey');
   end;
 
@@ -137,18 +143,18 @@ end;
 function TOpenSslCrossCheckTests.Verifies(const TestCase: TJSONObject): Boolean;
 begin
   const PublicKey = PublicKeyOf(TestCase);
-  const Message   = TTestSupport.HexToBytes(TestCase.GetValue<string>('message'));
-  const Signature = TTestSupport.HexToBytes(TestCase.GetValue<string>('signature'));
+  const Message   = TTestSupport.BytesOf(TestCase, 'message');
+  const Signature = TTestSupport.BytesOf(TestCase, 'signature');
   const Algorithm = TestCase.GetValue<string>(AlgorithmName);
 
   if Algorithm.StartsWith(FamilyEcdsa) then
-    Exit(VerifiesEcdsa(PublicKey, TestCase, Message, Signature));
-  if Algorithm.StartsWith(FamilyRsa) then
-    Exit(VerifiesRsa(PublicKey, Message, Signature));
-  if Algorithm.StartsWith(FamilyEdDsa) then
-    Exit(VerifiesEdDsa(PublicKey, Message, Signature));
-
-  raise ETestSupportError.CreateFmt('Unknown algorithm "%s"', [Algorithm]);
+    Result := VerifiesEcdsa(PublicKey, TestCase, Message, Signature)
+  else if Algorithm.StartsWith(FamilyRsa) then
+    Result := VerifiesRsa(PublicKey, Message, Signature)
+  else if Algorithm.StartsWith(FamilyEdDsa) then
+    Result := VerifiesEdDsa(PublicKey, Message, Signature)
+  else
+    raise ETestSupportError.CreateFmt('Unknown algorithm "%s"', [Algorithm]);
 end;
 
 function TOpenSslCrossCheckTests.VerifiesEcdsa(const PublicKey: TX509PublicKeyInfo;

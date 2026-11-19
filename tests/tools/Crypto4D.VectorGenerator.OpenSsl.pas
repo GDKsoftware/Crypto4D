@@ -67,7 +67,18 @@ resourcestring
   UnknownVerdict     = 'Unknown verdict %d';
 
 const
-  DerFormat = 'DER';
+  DerFormat       = 'DER';
+  PublicKeyTool   = 'pkey';
+  SignatureTool   = 'pkeyutl';
+  DigestTool      = 'dgst';
+  Sha256Option    = '-sha256';
+  InputOption     = '-in';
+  OutputOption    = '-out';
+  KeyOption       = '-inkey';
+  KeyFormOption   = '-keyform';
+  RawInputOption  = '-rawin';
+  SignOption      = '-sign';
+  VerifyOption    = '-verify';
 
 function TOpenSslVerdictHelper.Text: string;
 begin
@@ -111,7 +122,7 @@ end;
 
 procedure TOpenSslTool.GenerateKey(const KeyFile, Algorithm, Option: string);
 begin
-  var Arguments: TArray<string> := ['genpkey', '-algorithm', Algorithm, '-out', KeyFile];
+  var Arguments: TArray<string> := ['genpkey', '-algorithm', Algorithm, OutputOption, KeyFile];
   if not Option.IsEmpty then
     Arguments := Arguments + ['-pkeyopt', Option];
 
@@ -121,7 +132,7 @@ end;
 function TOpenSslTool.PublicKeyDer(const KeyFile: string): TBytes;
 begin
   const PublicKeyFile = TPath.ChangeExtension(KeyFile, '.public.der');
-  RunChecked(['pkey', '-in', KeyFile, '-pubout', '-outform', DerFormat, '-out', PublicKeyFile]);
+  RunChecked([PublicKeyTool, InputOption, KeyFile, '-pubout', '-outform', DerFormat, OutputOption, PublicKeyFile]);
 
   Result := TFile.ReadAllBytes(PublicKeyFile);
 end;
@@ -129,25 +140,27 @@ end;
 procedure TOpenSslTool.Sign(const KeyFile, MessageFile, SignatureFile: string; const RawInput: Boolean);
 begin
   if RawInput then
-    RunChecked(['pkeyutl', '-sign', '-inkey', KeyFile, '-rawin', '-in', MessageFile, '-out', SignatureFile])
+    RunChecked([SignatureTool, SignOption, KeyOption, KeyFile, RawInputOption, InputOption, MessageFile,
+                OutputOption, SignatureFile])
   else
-    RunChecked(['dgst', '-sha256', '-sign', KeyFile, '-out', SignatureFile, MessageFile]);
+    RunChecked([DigestTool, Sha256Option, SignOption, KeyFile, OutputOption, SignatureFile, MessageFile]);
 end;
 
 function TOpenSslTool.Verdict(const PublicKeyFile, MessageFile, SignatureFile: string; const RawInput: Boolean): TOpenSslVerdict;
 begin
   var Outcome: TOpenSslResult;
   if RawInput then
-    Outcome := Run(['pkeyutl', '-verify', '-pubin', '-inkey', PublicKeyFile, '-keyform', DerFormat,
-                    '-rawin', '-in', MessageFile, '-sigfile', SignatureFile])
+    Outcome := Run([SignatureTool, VerifyOption, '-pubin', KeyOption, PublicKeyFile, KeyFormOption, DerFormat,
+                    RawInputOption, InputOption, MessageFile, '-sigfile', SignatureFile])
   else
-    Outcome := Run(['dgst', '-sha256', '-verify', PublicKeyFile, '-keyform', DerFormat,
+    Outcome := Run([DigestTool, Sha256Option, VerifyOption, PublicKeyFile, KeyFormOption, DerFormat,
                     '-signature', SignatureFile, MessageFile]);
 
-  const HasVerified         = (Outcome.ExitCode = 0);
-  const ReportsFailure      = Outcome.Output.ToLower.Contains('verification failure');
-  const RejectsSignature    = Outcome.Errors.Contains('Error verifying data');
-  const RejectsKey          = Outcome.Errors.Contains('Could not find') and Outcome.Errors.Contains('key');
+  const LowerCaseOutput  = Outcome.Output.ToLower;
+  const HasVerified      = (Outcome.ExitCode = 0);
+  const ReportsFailure   = LowerCaseOutput.Contains('verification failure');
+  const RejectsSignature = Outcome.Errors.Contains('Error verifying data');
+  const RejectsKey       = Outcome.Errors.Contains('Could not find') and Outcome.Errors.Contains('key');
 
   if HasVerified then
     Result := TOpenSslVerdict.Verified
@@ -166,15 +179,20 @@ begin
   Result := Run(Arguments);
 
   const HasFailed = (Result.ExitCode <> 0);
-  if HasFailed then
-    raise EOpenSslToolError.CreateFmt(CommandFailed, [string.Join(' ', Arguments), Result.ExitCode, Result.Errors]);
+  if not HasFailed then
+    Exit;
+
+  const Command = string.Join(' ', Arguments);
+  raise EOpenSslToolError.CreateFmt(CommandFailed, [Command, Result.ExitCode, Result.Errors]);
 end;
 
 function TOpenSslTool.Run(const Arguments: TArray<string>): TOpenSslResult;
 begin
   const RunNumber   = TInterlocked.Increment(FRunCount);
-  const OutputFile  = TPath.Combine(FWorkFolder, Format('stdout-%d.txt', [RunNumber]));
-  const ErrorFile   = TPath.Combine(FWorkFolder, Format('stderr-%d.txt', [RunNumber]));
+  const OutputName  = Format('stdout-%d.txt', [RunNumber]);
+  const ErrorName   = Format('stderr-%d.txt', [RunNumber]);
+  const OutputFile  = TPath.Combine(FWorkFolder, OutputName);
+  const ErrorFile   = TPath.Combine(FWorkFolder, ErrorName);
   const CommandLine = BuildCommandLine(Arguments);
 
   const Process = Launch(CommandLine, OutputFile, ErrorFile);
@@ -216,7 +234,10 @@ begin
       const Started = CreateProcess(nil, PChar(MutableCommandLine), nil, nil, True, CREATE_NO_WINDOW, nil, nil,
                                     StartupInfo, ProcessInfo);
       if not Started then
-        raise EOpenSslToolError.CreateFmt(CannotStartProcess, [FExecutable, SysErrorMessage(GetLastError)]);
+      begin
+        const Reason = SysErrorMessage(GetLastError);
+        raise EOpenSslToolError.CreateFmt(CannotStartProcess, [FExecutable, Reason]);
+      end;
     finally
       CloseHandle(StartupInfo.hStdOutput);
       CloseHandle(StartupInfo.hStdError);
@@ -238,8 +259,11 @@ begin
   Result := CreateFile(PChar(FileName), GENERIC_WRITE, FILE_SHARE_READ, @Security, CREATE_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL, 0);
   const HasFailed = (Result = INVALID_HANDLE_VALUE);
-  if HasFailed then
-    raise EOpenSslToolError.CreateFmt(CannotCreateFile, [FileName, SysErrorMessage(GetLastError)]);
+  if not HasFailed then
+    Exit;
+
+  const Reason = SysErrorMessage(GetLastError);
+  raise EOpenSslToolError.CreateFmt(CannotCreateFile, [FileName, Reason]);
 end;
 
 function TOpenSslTool.WaitForExit(const Process: THandle): Cardinal;

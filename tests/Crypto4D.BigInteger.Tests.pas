@@ -178,6 +178,11 @@ uses
 
 const
   VectorFileName    = 'biginteger/biginteger.json';
+  LeftName          = 'a';
+  RightName         = 'b';
+  SumName           = 'sum';
+  ProductName       = 'product';
+  RemainderName     = 'remainder';
   DifferenceName    = 'difference';
   QuotientName      = 'quotient';
   PowerName         = 'power';
@@ -192,7 +197,8 @@ end;
 
 function TBigIntegerTests.JsonHex(const TestCase: TJSONObject; const Name: string): TBigInteger;
 begin
-  Result := TBigInteger.FromHex(TestCase.GetValue<string>(Name));
+  const Hex = TestCase.GetValue<string>(Name);
+  Result := TBigInteger.FromHex(Hex);
 end;
 
 function TBigIntegerTests.HasValue(const TestCase: TJSONObject; const Name: string): Boolean;
@@ -508,15 +514,22 @@ end;
 
 procedure TBigIntegerTests.CheckCase(const TestCase: TJSONObject; const Index: Integer);
 begin
-  const Left  = JsonHex(TestCase, 'a');
-  const Right = JsonHex(TestCase, 'b');
+  const Left  = JsonHex(TestCase, LeftName);
+  const Right = JsonHex(TestCase, RightName);
 
-  CheckSame(JsonHex(TestCase, 'sum'), Left + Right, Index, 'sum');
-  CheckSame(JsonHex(TestCase, 'product'), Left * Right, Index, 'product');
-  Assert.AreEqual(TestCase.GetValue<Integer>('compare'), TBigInteger.Compare(Left, Right), Format('case %d, compare', [Index]));
+  const ExpectedSum      = JsonHex(TestCase, SumName);
+  const ExpectedProduct  = JsonHex(TestCase, ProductName);
+  const ExpectedOrder    = TestCase.GetValue<Integer>('compare');
+  const ActualOrder      = TBigInteger.Compare(Left, Right);
+  CheckSame(ExpectedSum, Left + Right, Index, SumName);
+  CheckSame(ExpectedProduct, Left * Right, Index, ProductName);
+  Assert.AreEqual(ExpectedOrder, ActualOrder, Format('case %d, compare', [Index]));
 
   if HasValue(TestCase, DifferenceName) then
-    CheckSame(JsonHex(TestCase, DifferenceName), Left - Right, Index, DifferenceName);
+  begin
+    const ExpectedDifference = JsonHex(TestCase, DifferenceName);
+    CheckSame(ExpectedDifference, Left - Right, Index, DifferenceName);
+  end;
 
   if HasValue(TestCase, QuotientName) then
     CheckDivision(TestCase, Index);
@@ -527,26 +540,34 @@ end;
 
 procedure TBigIntegerTests.CheckDivision(const TestCase: TJSONObject; const Index: Integer);
 begin
-  const Dividend = JsonHex(TestCase, 'a');
-  const Divisor  = JsonHex(TestCase, 'b');
+  const Dividend = JsonHex(TestCase, LeftName);
+  const Divisor  = JsonHex(TestCase, RightName);
 
-  CheckSame(JsonHex(TestCase, QuotientName), Dividend div Divisor, Index, QuotientName);
-  CheckSame(JsonHex(TestCase, 'remainder'), Dividend mod Divisor, Index, 'remainder');
+  const ExpectedQuotient  = JsonHex(TestCase, QuotientName);
+  const ExpectedRemainder = JsonHex(TestCase, RemainderName);
+  CheckSame(ExpectedQuotient, Dividend div Divisor, Index, QuotientName);
+  CheckSame(ExpectedRemainder, Dividend mod Divisor, Index, RemainderName);
 end;
 
 procedure TBigIntegerTests.CheckModularOperations(const TestCase: TJSONObject; const Index: Integer);
 begin
-  const Value    = JsonHex(TestCase, 'a');
+  const Value    = JsonHex(TestCase, LeftName);
   const Modulus  = JsonHex(TestCase, 'm');
   const Exponent = JsonHex(TestCase, 'exponent');
 
-  CheckSame(JsonHex(TestCase, PowerName), Value.ModPow(Exponent, Modulus), Index, PowerName);
+  const ExpectedPower = JsonHex(TestCase, PowerName);
+  const ActualPower   = Value.ModPow(Exponent, Modulus);
+  CheckSame(ExpectedPower, ActualPower, Index, PowerName);
 
   var Inverse: TBigInteger;
-  const Found = Value.TryModInverse(Modulus, Inverse);
-  Assert.AreEqual(HasValue(TestCase, InverseName), Found, Format('case %d, inverse exists', [Index]));
+  const Found         = Value.TryModInverse(Modulus, Inverse);
+  const ExpectedFound = HasValue(TestCase, InverseName);
+  Assert.AreEqual(ExpectedFound, Found, Format('case %d, inverse exists', [Index]));
   if Found then
-    CheckSame(JsonHex(TestCase, InverseName), Inverse, Index, InverseName);
+  begin
+    const ExpectedInverse = JsonHex(TestCase, InverseName);
+    CheckSame(ExpectedInverse, Inverse, Index, InverseName);
+  end;
 end;
 
 procedure TBigIntegerTests.ReferenceVectors_AllOperations_MatchReference;
@@ -560,8 +581,10 @@ begin
       CheckCase(TestCase, Index);
     end;
 
-    TTestSupport.Log(Format('%d big integer reference cases checked', [Cases.Count]));
-    Assert.IsTrue(Cases.Count > 0);
+    const Summary  = Format('%d big integer reference cases checked', [Cases.Count]);
+    const HasCases = (Cases.Count > 0);
+    TTestSupport.Log(Summary);
+    Assert.IsTrue(HasCases);
   finally
     Document.Free;
   end;
@@ -578,8 +601,10 @@ begin
       CheckDivision(TestCase, Index);
     end;
 
-    TTestSupport.Log(Format('%d divisions that need the add-back step checked', [Cases.Count]));
-    Assert.IsTrue(Cases.Count > 0);
+    const Summary  = Format('%d divisions that need the add-back step checked', [Cases.Count]);
+    const HasCases = (Cases.Count > 0);
+    TTestSupport.Log(Summary);
+    Assert.IsTrue(HasCases);
   finally
     Document.Free;
   end;
