@@ -1,7 +1,6 @@
 # Crypto4D
 
-Crypto4D verifies digital signatures in pure Delphi. It needs no DLL, no OpenSSL and no unit outside the
-Delphi RTL, and the same source compiles for Win32, Win64 and Linux64.
+Crypto4D verifies digital signatures in pure Delphi. The same source compiles for Win32, Win64 and Linux64.
 
 It only verifies. There is no signing, no key generation and no encryption, so the library never handles a
 private key.
