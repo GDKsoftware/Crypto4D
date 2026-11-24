@@ -124,7 +124,8 @@ type
 
   /// <summary>
   ///   Reads the DER elements in a byte array one after another. The reader is strict: it accepts single-byte tags
-  ///   only and a definite length in the shortest encoding of at most four length octets. It does not look inside
+  ///   only and a definite length in the shortest encoding of at most four length octets, for content of at most
+  ///   MaxInt bytes, so that 32-bit and 64-bit builds accept the same input. It does not look inside
   ///   the content of an element; create another reader on the content for that.
   /// </summary>
   TDerReader = record
@@ -135,12 +136,13 @@ type
       MultiByteTagNumber  = $1F;
       MaxLengthOctets     = 4;
       ShortFormLimit      = $80;
+      MaxContentLength    = MaxInt;
 
     var
       FData: TBytes;
-      FPosition: Integer;
+      FPosition: NativeInt;
 
-    function TryReadLength(const LengthPosition: Integer; out ContentLength: Int64; out ContentPosition: Integer): Boolean;
+    function TryReadLength(const LengthPosition: NativeInt; out ContentLength: Int64; out ContentPosition: NativeInt): Boolean;
 
   public
     /// <summary>
@@ -367,7 +369,7 @@ begin
   if IsImpossible then
     Exit(False);
 
-  const UnusedMask: Byte = (1 shl UnusedBits) - 1;
+  const UnusedMask: Byte = Byte((1 shl UnusedBits) - 1);
   const LastByte         = FContent[ContentLength - 1];
   Result := ((LastByte and UnusedMask) = 0);
 end;
@@ -421,16 +423,17 @@ begin
     Exit(False);
 
   var ContentLength: Int64;
-  var ContentPosition: Integer;
+  var ContentPosition: NativeInt;
   if not TryReadLength(FPosition + 1, ContentLength, ContentPosition) then
     Exit(False);
 
   const Remaining: Int64 = Int64(Length(FData)) - ContentPosition;
   const IsTruncated      = (ContentLength > Remaining);
-  if IsTruncated then
+  const IsTooLong        = (ContentLength > MaxContentLength);
+  if IsTruncated or IsTooLong then
     Exit(False);
 
-  const ContentSize = Integer(ContentLength);
+  const ContentSize = NativeInt(ContentLength);
   const EndPosition = ContentPosition + ContentSize;
   const Content     = Copy(FData, ContentPosition, ContentSize);
   const Encoded     = Copy(FData, FPosition, EndPosition - FPosition);
@@ -440,7 +443,7 @@ begin
   Result    := True;
 end;
 
-function TDerReader.TryReadLength(const LengthPosition: Integer; out ContentLength: Int64; out ContentPosition: Integer): Boolean;
+function TDerReader.TryReadLength(const LengthPosition: NativeInt; out ContentLength: Int64; out ContentPosition: NativeInt): Boolean;
 begin
   ContentLength   := 0;
   ContentPosition := 0;

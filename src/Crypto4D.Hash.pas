@@ -12,6 +12,9 @@ type
   /// </summary>
   TCryptoHash = class
   private
+    const
+      MaxUpdateLength = 1 shl 30;
+
     class function Digest(const Message: TBytes; const Version: THashSHA2.TSHA2Version): TBytes; static;
 
   public
@@ -36,6 +39,9 @@ type
 
 implementation
 
+uses
+  System.Math;
+
 class function TCryptoHash.Sha256(const Message: TBytes): TBytes;
 begin
   Result := Digest(Message, THashSHA2.TSHA2Version.SHA256);
@@ -51,9 +57,13 @@ begin
   var Hasher := THashSHA2.Create(Version);
 
   const MessageLength = Length(Message);
-  const HasContent    = (MessageLength > 0);
-  if HasContent then
-    Hasher.Update(Message[0], MessageLength);
+  var Offset: NativeInt := 0;
+  while Offset < MessageLength do
+  begin
+    const ChunkLength = Min(MessageLength - Offset, MaxUpdateLength);
+    Hasher.Update(Message[Offset], Cardinal(ChunkLength));
+    Inc(Offset, ChunkLength);
+  end;
 
   Result := Hasher.HashAsBytes;
 end;

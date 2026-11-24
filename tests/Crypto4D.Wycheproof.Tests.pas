@@ -88,7 +88,7 @@ begin
   try
     const Accepted = TTestSupport.ArrayOf(Document, 'verifiesWithCofactorlessEquation');
     SetLength(FMixedOrderAccepted, Accepted.Count);
-    for var Index := 0 to High(FMixedOrderAccepted) do
+    for var Index := 0 to Accepted.Count - 1 do
     begin
       FMixedOrderAccepted[Index] := TTestSupport.IntegerAt(Accepted, Index);
     end;
