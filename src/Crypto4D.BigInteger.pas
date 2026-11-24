@@ -52,6 +52,8 @@ type
     class function HexDigitValue(const Digit: Char): Byte; static;
     class procedure GuardModulus(const Modulus: TBigInteger); static;
 
+    function TopLimbBitLength: Integer;
+
   public
     /// <summary>
     ///   Returns the value 0.
@@ -478,9 +480,8 @@ begin
   if IsZero then
     Exit(0);
 
-  const TopIndex: Int64 = High(FLimbs);
-  const TopBits         = LimbBitLength(FLimbs[TopIndex]);
-  Result := TopIndex * LimbBits + TopBits;
+  const LowerLimbs: Int64 = High(FLimbs);
+  Result := LowerLimbs * LimbBits + TopLimbBitLength;
 end;
 
 function TBigInteger.ByteLength: NativeInt;
@@ -488,10 +489,15 @@ begin
   if IsZero then
     Exit(0);
 
-  const TopIndex = High(FLimbs);
-  const TopBits  = LimbBitLength(FLimbs[TopIndex]);
-  const TopBytes = (TopBits + BitsPerByte - 1) div BitsPerByte;
-  Result := TopIndex * LimbBytes + TopBytes;
+  const LowerLimbs = High(FLimbs);
+  const TopBytes   = (TopLimbBitLength + BitsPerByte - 1) div BitsPerByte;
+  Result := LowerLimbs * LimbBytes + TopBytes;
+end;
+
+function TBigInteger.TopLimbBitLength: Integer;
+begin
+  const TopLimb = FLimbs[High(FLimbs)];
+  Result := LimbBitLength(TopLimb);
 end;
 
 function TBigInteger.TestBit(const BitIndex: Int64): Boolean;
