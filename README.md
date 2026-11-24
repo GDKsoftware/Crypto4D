@@ -39,8 +39,7 @@ the curve, a certificate that does not parse.
 - an RSA modulus that is even, under 2048 bits or over 8192 bits
 - an RSA public exponent that is even, smaller than 3, or 2^33 or larger
 
-So a key constructor raises for a key it does not support; it does not return `False`. When the key comes
-from outside, check it before you construct it:
+When the key comes from outside, check it before you construct it:
 
 - RSA: `TRsaPublicKey.IsSupportedModulus` and `TRsaPublicKey.IsSupportedExponent`
 - P-256: both coordinates are 32 bytes, or `TEcdsaP256PublicKey.IsUncompressedPoint` for the 65 byte form
@@ -94,13 +93,7 @@ Crypto4D builds the one encoded message that is valid for the given message and 
 with the decrypted signature; it does not parse the padding. A `DigestInfo` without the `NULL` parameter
 is therefore rejected.
 
-Two limits apply to the key, and `TRsaPublicKey.Create` raises `ECrypto4DArgumentError` for a key outside
-them:
-
-- the modulus must be odd, at least 2048 and at most 8192 bits
-- the public exponent must be odd, at least 3 and smaller than 2^33
-
-The upper limits are there because the other party picks the key, and the time one verification takes grows
+The modulus and the exponent have an upper limit because the other party picks the key, and the time one verification takes grows
 with the size of the modulus and of the exponent.
 
 ### Ed25519
@@ -122,11 +115,9 @@ The verification is strict:
 - a public key of small order is rejected
 - the equation `[S]B = R + [k]A` is checked as it stands, without multiplying by the cofactor 8
 
-Strict here means that Crypto4D rejects everything in the list above: an `S` that is not reduced, a
-non-canonical encoding, a public key of small order and a signature that only verifies after multiplying
-by the cofactor, so this is not the ZIP 215 rule set. Strict does not mean that the public key must lie in
-the prime-order subgroup: a key with a torsion component that is not of small order (a mixed-order key) is
-accepted, and its signatures verify when they satisfy the equation as it stands.
+Strict does not mean that the public key must lie in the prime-order subgroup: a key with a torsion
+component that is not of small order (a mixed-order key) is accepted, and its signatures verify when they
+satisfy the equation as it stands.
 
 Only the public key is checked for small order. `R` is not: a signature whose `R` is one of the eight points
 of small order is accepted when the equation holds. Case 2 of ed25519-speccheck is such a signature.
@@ -182,15 +173,7 @@ does not know can be any single DER element.
 
 Crypto4D does not validate a certificate chain. It has no trust store and it does not look at validity
 dates, key usage, name constraints or revocation. `IsSignedBy` answers one question: was this certificate
-signed with that key. An application that validates a chain has to do the rest itself:
-
-- build the chain: find the issuer certificate of every certificate, up to a certificate it trusts
-- compare `Issuer` of every certificate with `Subject` of its issuer
-- parse `Validity` and check the dates
-- read basicConstraints (`2.5.29.19`) of every issuer certificate: it must be a CA, and the path length
-  must be respected
-- reject a certificate that has a critical extension the application does not process
-- check key usage, name constraints and revocation where the application needs them
+signed with that key.
 
 ### Big integers
 
@@ -218,12 +201,7 @@ has overflow and range checking switched on.
 
 The tests were run with Delphi 13, as Debug and as Release build, for Win32, Win64 and Linux64. The Linux64
 build was made with the SDK of Ubuntu 24.04 and run on Ubuntu 24.04 under WSL 2. No other Delphi version
-and no other platform was run.
-
-```
-msbuild tests\Crypto4D.Tests.dproj /t:Build /p:Config=Debug /p:Platform=Win64
-tests\bin\Win64\Debug\Crypto4D.Tests.exe
-```
+and no other platform was run. [CONTRIBUTING.md](CONTRIBUTING.md) says how to build and run them.
 
 What the tests cover:
 
@@ -252,17 +230,10 @@ What the tests cover:
   including divisions that need the rare add-back step of Knuth's algorithm D.
 - X.509 certificates made by OpenSSL, compared with what OpenSSL reports about them, plus damaged and
   truncated variants.
+- Sizes beyond 2^31: a 4 GiB message, a 2 GiB DER element and an RSA modulus of more than 2^32 bits.
 
 The vectors are in `tests\vectors`. Every folder there has a `SOURCE.md` that says where the data comes
 from.
-
-The OpenSSL cross-check cases can be made again with `tests\tools\Crypto4D.VectorGenerator.dproj`, a
-console program that drives the `openssl` command line tool:
-
-```
-msbuild tests\tools\Crypto4D.VectorGenerator.dproj /t:Build /p:Config=Debug /p:Platform=Win64
-tests\tools\bin\Win64\Debug\Crypto4D.VectorGenerator.exe <path to openssl.exe> tests\vectors\openssl\crosscheck.json
-```
 
 ### Wycheproof vectors with the result "acceptable"
 
@@ -284,6 +255,6 @@ Test vectors from other projects keep their own license. The vectors in `tests\v
 file. `SOURCE.md` in `tests\vectors\ed25519-cr-yp-to` and `tests\vectors\nist-cavp` states the terms of
 those vectors.
 
-## Security
+## Contributing and security
 
-See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and, for reporting a vulnerability, [SECURITY.md](SECURITY.md).

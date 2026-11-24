@@ -61,7 +61,7 @@ type
     [TestCase('LimbBoundaryBelow', 'ffffffff,32')]
     [TestCase('LimbBoundaryAbove', '100000000,33')]
     [TestCase('TwoLimbs', '8000000000000000,64')]
-    procedure BitLength_Various_ReturnsExpected(const Value: string; const Expected: Integer);
+    procedure BitLength_Various_ReturnsExpected(const Value: string; const Expected: Int64);
 
     [Test]
     procedure TestBit_BeyondValue_ReturnsFalse;
@@ -229,7 +229,7 @@ begin
   const Value = TBigInteger.FromBytes(nil);
 
   Assert.IsTrue(Value.IsZero);
-  Assert.AreEqual(0, Value.BitLength);
+  Assert.AreEqual<Int64>(0, Value.BitLength);
 end;
 
 procedure TBigIntegerTests.FromBytes_LeadingZeroBytes_AreIgnored;
@@ -237,7 +237,7 @@ begin
   const Value = TBigInteger.FromBytes([0, 0, 0, 0, 0, 1, 2]);
 
   Assert.AreEqual('0102', Value.ToHex);
-  Assert.AreEqual(2, Value.ByteLength);
+  Assert.AreEqual<NativeInt>(2, Value.ByteLength);
 end;
 
 procedure TBigIntegerTests.ToBytes_Zero_IsSingleZeroByte;
@@ -276,10 +276,10 @@ begin
   const Value = TBigInteger.FromUInt64(High(UInt64));
 
   Assert.AreEqual('ffffffffffffffff', Value.ToHex);
-  Assert.AreEqual(64, Value.BitLength);
+  Assert.AreEqual<Int64>(64, Value.BitLength);
 end;
 
-procedure TBigIntegerTests.BitLength_Various_ReturnsExpected(const Value: string; const Expected: Integer);
+procedure TBigIntegerTests.BitLength_Various_ReturnsExpected(const Value: string; const Expected: Int64);
 begin
   const Actual = Hex(Value).BitLength;
 

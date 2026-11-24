@@ -34,7 +34,8 @@ uses
   Crypto4D.NistCavp.Tests in 'Crypto4D.NistCavp.Tests.pas',
   Crypto4D.X509Limbo.Tests in 'Crypto4D.X509Limbo.Tests.pas',
   Crypto4D.OpenSsl.Tests in 'Crypto4D.OpenSsl.Tests.pas',
-  Crypto4D.Benchmark.Tests in 'Crypto4D.Benchmark.Tests.pas';
+  Crypto4D.Benchmark.Tests in 'Crypto4D.Benchmark.Tests.pas',
+  Crypto4D.LargeInput.Tests in 'Crypto4D.LargeInput.Tests.pas';
 
 begin
   try

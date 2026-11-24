@@ -36,14 +36,14 @@ type
   end;
 
   TCasePlan = record
-    KeyIndex: Integer;
+    KeyIndex: NativeInt;
     Message: TBytes;
     Mutation: TMutation;
     BitSeed: Cardinal;
   end;
 
   TGeneratedCase = record
-    KeyIndex: Integer;
+    KeyIndex: NativeInt;
     Mutation: TMutation;
     Message: TBytes;
     Signature: TBytes;
@@ -80,7 +80,7 @@ type
                      const KeyCount, CaseCount: Integer): TKeyPlan;
     procedure PlanKeysAndCases(const Plan: TKeyPlan);
     function GenerateKey(const Plan: TKeyPlan): TGeneratedKey;
-    function PlanCase(const Plan: TKeyPlan; const FirstKeyIndex: Integer): TCasePlan;
+    function PlanCase(const Plan: TKeyPlan; const FirstKeyIndex: NativeInt): TCasePlan;
     function RandomMessage(const Family: TSignatureFamily): TBytes;
     function RandomMutation(const Family: TSignatureFamily): TMutation;
     function BuildCase(const Index: Integer): TGeneratedCase;
@@ -90,12 +90,12 @@ type
     function ChangedMessage(const Message: TBytes; const BitSeed: Cardinal): TBytes;
     function DamageRsaKey(const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
     function DamageKey(const Family: TSignatureFamily; const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
-    function FindRsaModulus(const PublicKey: TBytes; out Offset, Count: Integer): Boolean;
-    function FlipBit(const Bytes: TBytes; const Start, Count: Integer; const BitSeed: Cardinal): TBytes;
+    function FindRsaModulus(const PublicKey: TBytes; out Offset, Count: NativeInt): Boolean;
+    function FlipBit(const Bytes: TBytes; const Start, Count: NativeInt; const BitSeed: Cardinal): TBytes;
     function RawFromDer(const Signature: TBytes): TBytes;
     function DerFromRaw(const RawSignature: TBytes): TBytes;
     function DerInteger(const Magnitude: TBytes): TBytes;
-    function WorkFile(const Name: string; const Index: Integer): string;
+    function WorkFile(const Name: string; const Index: NativeInt): string;
     function ToJson: TJSONObject;
     function CaseToJson(const Generated: TGeneratedCase): TJSONObject;
     function ToHex(const Bytes: TBytes): string;
@@ -156,7 +156,8 @@ begin
   end;
 
   SetLength(FCases, Length(FPlans));
-  TParallel.For(0, High(FPlans),
+  const LastCaseIndex = Integer(High(FPlans));
+  TParallel.For(0, LastCaseIndex,
     procedure(Index: Integer)
     begin
       FCases[Index] := BuildCase(Index);
@@ -223,7 +224,7 @@ begin
   Result.PublicKey := FTool.PublicKeyDer(KeyFile);
 end;
 
-function TCrossCheckGenerator.PlanCase(const Plan: TKeyPlan; const FirstKeyIndex: Integer): TCasePlan;
+function TCrossCheckGenerator.PlanCase(const Plan: TKeyPlan; const FirstKeyIndex: NativeInt): TCasePlan;
 begin
   Result.KeyIndex := FirstKeyIndex + Random(Plan.KeyCount);
   Result.Message  := RandomMessage(Plan.Family);
@@ -257,7 +258,8 @@ begin
   if HasDerSignature then
     Choices := Choices + [TMutation.SignatureDer];
 
-  const Choice = Random(Length(Choices));
+  const ChoiceCount = Integer(Length(Choices));
+  const Choice      = Random(ChoiceCount);
   Result := Choices[Choice];
 end;
 
@@ -353,15 +355,15 @@ end;
 
 function TCrossCheckGenerator.DamageRsaKey(const PublicKey: TBytes; const BitSeed: Cardinal): TBytes;
 begin
-  var Offset: Integer;
-  var Count: Integer;
+  var Offset: NativeInt;
+  var Count: NativeInt;
   if not FindRsaModulus(PublicKey, Offset, Count) then
     raise ECrossCheckGeneratorError.Create(ModulusNotFound);
 
   Result := FlipBit(PublicKey, Offset + 1, Count - 1, BitSeed);
 end;
 
-function TCrossCheckGenerator.FindRsaModulus(const PublicKey: TBytes; out Offset, Count: Integer): Boolean;
+function TCrossCheckGenerator.FindRsaModulus(const PublicKey: TBytes; out Offset, Count: NativeInt): Boolean;
 begin
   Offset := 0;
   Count  := 0;
@@ -389,12 +391,12 @@ begin
   Result := False;
 end;
 
-function TCrossCheckGenerator.FlipBit(const Bytes: TBytes; const Start, Count: Integer; const BitSeed: Cardinal): TBytes;
+function TCrossCheckGenerator.FlipBit(const Bytes: TBytes; const Start, Count: NativeInt; const BitSeed: Cardinal): TBytes;
 begin
-  const BitCount: Cardinal = Cardinal(Count) * BitsPerByte;
-  const BitOffset          = Integer(BitSeed mod BitCount);
-  const ByteIndex          = Start + (BitOffset div BitsPerByte);
-  const Mask: Byte         = 1 shl (BitOffset mod BitsPerByte);
+  const BitCount: UInt64 = UInt64(Count) * BitsPerByte;
+  const BitOffset        = NativeInt(BitSeed mod BitCount);
+  const ByteIndex        = Start + (BitOffset div BitsPerByte);
+  const Mask: Byte       = Byte(1 shl (BitOffset mod BitsPerByte));
 
   Result := Copy(Bytes);
   Result[ByteIndex] := Result[ByteIndex] xor Mask;
@@ -446,7 +448,7 @@ begin
   Result := TBytes.Create(DerIntegerTag, Byte(Length(Content))) + Content;
 end;
 
-function TCrossCheckGenerator.WorkFile(const Name: string; const Index: Integer): string;
+function TCrossCheckGenerator.WorkFile(const Name: string; const Index: NativeInt): string;
 begin
   const FileName = Format(Name, [Index]);
   Result := TPath.Combine(FTool.WorkFolder, FileName);
@@ -503,7 +505,7 @@ end;
 
 function TCrossCheckGenerator.ToHex(const Bytes: TBytes): string;
 begin
-  const Builder = TStringBuilder.Create(Length(Bytes) * HexDigitsPerByte);
+  const Builder = TStringBuilder.Create;
   try
     for var Value in Bytes do
     begin

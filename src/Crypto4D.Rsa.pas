@@ -14,7 +14,7 @@ type
     FModulus: TBytes;
     FExponent: TBytes;
 
-    class function IsSupportedModulusSize(const ModulusBits: Integer): Boolean; static;
+    class function IsSupportedModulusSize(const ModulusBits: Int64): Boolean; static;
 
   public
     const
@@ -79,7 +79,7 @@ type
       BlockType     = $01;
       FixedOverhead = 3;
 
-    class function ExpectedEncodedMessage(const Message: TBytes; const EncodedSize: Integer): TBytes; static;
+    class function ExpectedEncodedMessage(const Message: TBytes; const EncodedSize: NativeInt): TBytes; static;
     class function Sha256DigestInfoPrefix: TBytes; static;
 
   public
@@ -128,7 +128,7 @@ begin
   Result := Value.IsOdd and IsSupportedModulusSize(ModulusBits);
 end;
 
-class function TRsaPublicKey.IsSupportedModulusSize(const ModulusBits: Integer): Boolean;
+class function TRsaPublicKey.IsSupportedModulusSize(const ModulusBits: Int64): Boolean;
 begin
   Result := (ModulusBits >= MinimumModulusBits) and (ModulusBits <= MaximumModulusBits);
 end;
@@ -187,7 +187,7 @@ begin
   Result := TByteArrays.AreEqual(Expected, Actual);
 end;
 
-class function TRsaPkcs1Sha256.ExpectedEncodedMessage(const Message: TBytes; const EncodedSize: Integer): TBytes;
+class function TRsaPkcs1Sha256.ExpectedEncodedMessage(const Message: TBytes; const EncodedSize: NativeInt): TBytes;
 begin
   const Digest        = TCryptoHash.Sha256(Message);
   const DigestInfo    = Sha256DigestInfoPrefix + Digest;

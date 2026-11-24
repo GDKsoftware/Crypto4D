@@ -34,7 +34,7 @@ type
     class function LimbBitLength(const Limb: UInt32): Integer; static;
     class function ShiftLeftToLength(const Limbs: TArray<UInt32>;
                                      const BitCount: Integer;
-                                     const ResultLength: Integer): TArray<UInt32>; static;
+                                     const ResultLength: NativeInt): TArray<UInt32>; static;
     class function ShiftRightLimbs(const Limbs: TArray<UInt32>; const BitCount: Integer): TArray<UInt32>; static;
     class procedure DivideBySingleLimb(const Dividend: TArray<UInt32>;
                                        const Divisor: UInt32;
@@ -43,12 +43,12 @@ type
     class procedure DivideByMultipleLimbs(const Dividend, Divisor: TArray<UInt32>;
                                           out Quotient: TBigInteger;
                                           out Remainder: TBigInteger); static;
-    class function EstimateQuotientDigit(const Remainder, Divisor: TArray<UInt32>; const Position: Integer): UInt64; static;
+    class function EstimateQuotientDigit(const Remainder, Divisor: TArray<UInt32>; const Position: NativeInt): UInt64; static;
     class function SubtractProduct(var Remainder: TArray<UInt32>;
                                    const Divisor: TArray<UInt32>;
                                    const QuotientDigit: UInt64;
-                                   const Position: Integer): Boolean; static;
-    class procedure AddBack(var Remainder: TArray<UInt32>; const Divisor: TArray<UInt32>; const Position: Integer); static;
+                                   const Position: NativeInt): Boolean; static;
+    class procedure AddBack(var Remainder: TArray<UInt32>; const Divisor: TArray<UInt32>; const Position: NativeInt); static;
     class function HexDigitValue(const Digit: Char): Byte; static;
     class procedure GuardModulus(const Modulus: TBigInteger); static;
 
@@ -195,12 +195,12 @@ type
     /// <summary>
     ///   Returns the number of bits needed to write the value. Zero has a bit length of 0.
     /// </summary>
-    function BitLength: Integer;
+    function BitLength: Int64;
 
     /// <summary>
     ///   Returns the number of bytes needed to write the value. Zero has a byte length of 0.
     /// </summary>
-    function ByteLength: Integer;
+    function ByteLength: NativeInt;
 
     /// <summary>
     ///   Tells whether one bit of the value is set.
@@ -208,7 +208,7 @@ type
     /// <param name="BitIndex">Bit number, where bit 0 is the least significant bit.</param>
     /// <returns>True when the bit is set. False for an index beyond the bit length.</returns>
     /// <exception cref="ECrypto4DArgumentError">BitIndex is negative.</exception>
-    function TestBit(const BitIndex: Integer): Boolean;
+    function TestBit(const BitIndex: Int64): Boolean;
 
     /// <summary>
     ///   Writes the value as big-endian bytes without leading zero bytes.
@@ -222,7 +222,7 @@ type
     /// <param name="ByteCount">Length of the result in bytes.</param>
     /// <returns>ByteCount bytes, most significant byte first.</returns>
     /// <exception cref="ECrypto4DArgumentError">The value needs more than ByteCount bytes.</exception>
-    function ToFixedBytes(const ByteCount: Integer): TBytes;
+    function ToFixedBytes(const ByteCount: NativeInt): TBytes;
 
     /// <summary>
     ///   Writes the value as lower case hexadecimal text.
@@ -337,9 +337,9 @@ end;
 class function TBigInteger.HexDigitValue(const Digit: Char): Byte;
 begin
   case Digit of
-    '0'..'9' : Result := Ord(Digit) - Ord('0');
-    'a'..'f' : Result := Ord(Digit) - Ord('a') + 10;
-    'A'..'F' : Result := Ord(Digit) - Ord('A') + 10;
+    '0'..'9' : Result := Byte(Ord(Digit) - Ord('0'));
+    'a'..'f' : Result := Byte(Ord(Digit) - Ord('a') + 10);
+    'A'..'F' : Result := Byte(Ord(Digit) - Ord('A') + 10);
   else
     raise ECrypto4DArgumentError.CreateFmt(InvalidHexDigit, [Digit]);
   end;
@@ -473,22 +473,28 @@ begin
   Result := (Length(FLimbs) > 0) and Odd(FLimbs[0]);
 end;
 
-function TBigInteger.BitLength: Integer;
+function TBigInteger.BitLength: Int64;
+begin
+  if IsZero then
+    Exit(0);
+
+  const TopIndex: Int64 = High(FLimbs);
+  const TopBits         = LimbBitLength(FLimbs[TopIndex]);
+  Result := TopIndex * LimbBits + TopBits;
+end;
+
+function TBigInteger.ByteLength: NativeInt;
 begin
   if IsZero then
     Exit(0);
 
   const TopIndex = High(FLimbs);
   const TopBits  = LimbBitLength(FLimbs[TopIndex]);
-  Result := Integer(TopIndex) * LimbBits + TopBits;
+  const TopBytes = (TopBits + BitsPerByte - 1) div BitsPerByte;
+  Result := TopIndex * LimbBytes + TopBytes;
 end;
 
-function TBigInteger.ByteLength: Integer;
-begin
-  Result := (BitLength + BitsPerByte - 1) div BitsPerByte;
-end;
-
-function TBigInteger.TestBit(const BitIndex: Integer): Boolean;
+function TBigInteger.TestBit(const BitIndex: Int64): Boolean;
 begin
   const IsNegativeIndex = (BitIndex < 0);
   if IsNegativeIndex then
@@ -515,7 +521,7 @@ begin
   Result := ToFixedBytes(RequiredBytes);
 end;
 
-function TBigInteger.ToFixedBytes(const ByteCount: Integer): TBytes;
+function TBigInteger.ToFixedBytes(const ByteCount: NativeInt): TBytes;
 begin
   const RequiredBytes = ByteLength;
   const DoesNotFit    = (RequiredBytes > ByteCount);
@@ -731,7 +737,7 @@ end;
 
 class function TBigInteger.ShiftLeftToLength(const Limbs: TArray<UInt32>;
                                              const BitCount: Integer;
-                                             const ResultLength: Integer): TArray<UInt32>;
+                                             const ResultLength: NativeInt): TArray<UInt32>;
 begin
   const LimbShift = BitCount div LimbBits;
   const BitShift  = BitCount mod LimbBits;
@@ -825,7 +831,7 @@ begin
   Remainder := FromLimbs(RemainderLimbs);
 end;
 
-class function TBigInteger.EstimateQuotientDigit(const Remainder, Divisor: TArray<UInt32>; const Position: Integer): UInt64;
+class function TBigInteger.EstimateQuotientDigit(const Remainder, Divisor: TArray<UInt32>; const Position: NativeInt): UInt64;
 begin
   const DivisorLength       = Length(Divisor);
   const TopIndex            = Position + DivisorLength;
@@ -851,7 +857,7 @@ end;
 class function TBigInteger.SubtractProduct(var Remainder: TArray<UInt32>;
                                            const Divisor: TArray<UInt32>;
                                            const QuotientDigit: UInt64;
-                                           const Position: Integer): Boolean;
+                                           const Position: NativeInt): Boolean;
 begin
   const DivisorLength = Length(Divisor);
   var Carry: UInt64 := 0;
@@ -881,7 +887,7 @@ begin
   Remainder[TopIndex] := UInt32(TopDifference);
 end;
 
-class procedure TBigInteger.AddBack(var Remainder: TArray<UInt32>; const Divisor: TArray<UInt32>; const Position: Integer);
+class procedure TBigInteger.AddBack(var Remainder: TArray<UInt32>; const Divisor: TArray<UInt32>; const Position: NativeInt);
 begin
   const DivisorLength = Length(Divisor);
   var Carry: UInt64 := 0;

@@ -47,7 +47,7 @@ type
     class function BytesOf(const Source: TJSONObject; const Name: string): TBytes; static;
     class function HexToBytes(const Hex: string): TBytes; static;
     class function BytesToHex(const Bytes: TBytes): string; static;
-    class function FlipBit(const Bytes: TBytes; const BitIndex: Integer): TBytes; static;
+    class function FlipBit(const Bytes: TBytes; const BitIndex: NativeInt): TBytes; static;
     class function DerElement(const Tag: Byte; const Content: TBytes): TBytes; static;
     class procedure Log(const Text: string); static;
   end;
@@ -198,16 +198,16 @@ begin
   begin
     const HighNibble = HexDigitValue(Hex[ByteIndex * HexDigitsPerByte + 1]);
     const LowNibble  = HexDigitValue(Hex[ByteIndex * HexDigitsPerByte + 2]);
-    Result[ByteIndex] := (HighNibble * 16) + LowNibble;
+    Result[ByteIndex] := Byte((HighNibble * 16) + LowNibble);
   end;
 end;
 
 class function TTestSupport.HexDigitValue(const Digit: Char): Byte;
 begin
   case Digit of
-    '0'..'9' : Result := Ord(Digit) - Ord('0');
-    'a'..'f' : Result := Ord(Digit) - Ord('a') + 10;
-    'A'..'F' : Result := Ord(Digit) - Ord('A') + 10;
+    '0'..'9' : Result := Byte(Ord(Digit) - Ord('0'));
+    'a'..'f' : Result := Byte(Ord(Digit) - Ord('a') + 10);
+    'A'..'F' : Result := Byte(Ord(Digit) - Ord('A') + 10);
   else
     raise ETestSupportError.CreateFmt(InvalidHexDigit, [Digit]);
   end;
@@ -215,7 +215,7 @@ end;
 
 class function TTestSupport.BytesToHex(const Bytes: TBytes): string;
 begin
-  const Builder = TStringBuilder.Create(Length(Bytes) * HexDigitsPerByte);
+  const Builder = TStringBuilder.Create;
   try
     for var Value in Bytes do
     begin
@@ -228,11 +228,11 @@ begin
   end;
 end;
 
-class function TTestSupport.FlipBit(const Bytes: TBytes; const BitIndex: Integer): TBytes;
+class function TTestSupport.FlipBit(const Bytes: TBytes; const BitIndex: NativeInt): TBytes;
 begin
   Result := Copy(Bytes);
-  const ByteIndex = BitIndex div 8;
-  const Mask: Byte = 1 shl (BitIndex mod 8);
+  const ByteIndex  = BitIndex div 8;
+  const Mask: Byte = Byte(1 shl (BitIndex mod 8));
   Result[ByteIndex] := Result[ByteIndex] xor Mask;
 end;
 
