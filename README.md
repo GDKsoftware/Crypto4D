@@ -214,8 +214,7 @@ reuse the arithmetic in this library for anything that involves a secret.
 ## Testing
 
 The test project is `tests\Crypto4D.Tests.dproj`, a DUnitX console application. The Debug configuration
-has overflow and range checking switched on. Both test projects also switch on the warnings W1071 and W1072
-for implicit integer conversions, which Delphi leaves off by default.
+has overflow and range checking switched on.
 
 The tests were run with Delphi 13, as Debug and as Release build, for Win32, Win64 and Linux64. The Linux64
 build was made with the SDK of Ubuntu 24.04 and run on Ubuntu 24.04 under WSL 2. No other Delphi version
@@ -225,11 +224,6 @@ and no other platform was run.
 msbuild tests\Crypto4D.Tests.dproj /t:Build /p:Config=Debug /p:Platform=Win64
 tests\bin\Win64\Debug\Crypto4D.Tests.exe
 ```
-
-The tests in the category `LargeInput` check sizes beyond 2^31: a value of 2^31 bits and, on 64-bit
-platforms only, a 4 GiB message for SHA-256 and SHA-512, a DER element of 2 GiB and an RSA modulus of more
-than 2^32 bits. On Win64 they need about 4 GB of memory. Leave them out with
-`Crypto4D.Tests.exe --exclude:LargeInput`.
 
 What the tests cover:
 
@@ -258,6 +252,7 @@ What the tests cover:
   including divisions that need the rare add-back step of Knuth's algorithm D.
 - X.509 certificates made by OpenSSL, compared with what OpenSSL reports about them, plus damaged and
   truncated variants.
+- Sizes beyond 2^31: a 4 GiB message, a 2 GiB DER element and an RSA modulus of more than 2^32 bits.
 
 The vectors are in `tests\vectors`. Every folder there has a `SOURCE.md` that says where the data comes
 from.
@@ -280,10 +275,6 @@ Wycheproof marks a vector `acceptable` when a library may accept or reject it. C
 | `SmallOrderPublicKey` (Ed25519) | 8 | rejects | The public key is one of the eight points of small order. Crypto4D rejects such keys. |
 | `MixedOrderPublicKey` (Ed25519) | 21 | accepts all 21 | The public key has a torsion component but is not of small order, so Crypto4D does not reject the key. Each of these signatures also satisfies the equation without the cofactor, which an independent implementation confirmed (see `tests\vectors\wycheproof\SOURCE.md`). |
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, run the tests and add test vectors.
-
 ## License
 
 MIT, see [LICENSE](LICENSE).
@@ -294,6 +285,6 @@ Test vectors from other projects keep their own license. The vectors in `tests\v
 file. `SOURCE.md` in `tests\vectors\ed25519-cr-yp-to` and `tests\vectors\nist-cavp` states the terms of
 those vectors.
 
-## Security
+## Contributing and security
 
-See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and, for reporting a vulnerability, [SECURITY.md](SECURITY.md).
