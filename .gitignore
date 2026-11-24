@@ -16,3 +16,6 @@ __recovery/
 *.~*
 dunitx-results.xml
 *.res
+packages/Win32/
+packages/Win64/
+packages/Linux64/

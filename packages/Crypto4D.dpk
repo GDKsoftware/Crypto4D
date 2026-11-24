@@ -1,0 +1,50 @@
+package Crypto4D;
+
+{$R *.res}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE RELEASE}
+{$ENDIF IMPLICITBUILDING}
+{$DESCRIPTION 'Crypto4D signature verification'}
+{$LIBSUFFIX AUTO}
+{$RUNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl;
+
+contains
+  Crypto4D.Errors in '..\src\Crypto4D.Errors.pas',
+  Crypto4D.Bytes in '..\src\Crypto4D.Bytes.pas',
+  Crypto4D.BigInteger in '..\src\Crypto4D.BigInteger.pas',
+  Crypto4D.PrimeField in '..\src\Crypto4D.PrimeField.pas',
+  Crypto4D.Hash in '..\src\Crypto4D.Hash.pas',
+  Crypto4D.Der in '..\src\Crypto4D.Der.pas',
+  Crypto4D.P256 in '..\src\Crypto4D.P256.pas',
+  Crypto4D.Ecdsa in '..\src\Crypto4D.Ecdsa.pas',
+  Crypto4D.Rsa in '..\src\Crypto4D.Rsa.pas',
+  Crypto4D.Edwards25519 in '..\src\Crypto4D.Edwards25519.pas',
+  Crypto4D.Ed25519 in '..\src\Crypto4D.Ed25519.pas',
+  Crypto4D.X509 in '..\src\Crypto4D.X509.pas';
+
+end.
