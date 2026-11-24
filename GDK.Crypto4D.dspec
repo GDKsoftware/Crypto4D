@@ -1,0 +1,36 @@
+# DPM package spec file
+min dpm client version: 1.0.0
+metadata:
+  id: GDK.Crypto4D
+  version: 1.0.0
+  description: 'Signature verification in pure Delphi: ECDSA P-256, RSA PKCS#1 v1.5 and Ed25519, plus an X.509 certificate parser. No signing, no external libraries.'
+  authors:
+    - GDK Software
+  projectUrl: https://github.com/GDKsoftware/Crypto4D
+  repositoryUrl: https://github.com/GDKsoftware/Crypto4D
+  repositoryCommit: '#HASH#'
+  license: MIT
+  copyright: GDK Software
+  tags:
+    - cryptography
+    - signature
+    - ecdsa
+    - ed25519
+    - rsa
+    - x509
+  readme: README.md
+targetPlatforms:
+  - compiler from: delphi11.0
+    compiler to: delphi13.0
+    platforms:
+      - win32
+      - win64
+      - linux64
+templates:
+  - name: default
+    source:
+      - src: ./src/*.pas
+      - src: ./packages/Crypto4D.dpk
+      - src: ./packages/Crypto4D.dproj
+    build:
+      - project: ./packages/Crypto4D.dproj
