@@ -19,3 +19,4 @@ dunitx-results.xml
 packages/Win32/
 packages/Win64/
 packages/Linux64/
+packages/*.a

@@ -24,7 +24,7 @@ reader) and `Crypto4D.X509`.
 
 Written for Delphi 11 and later, tested on Delphi 13.
 
-Add the `src` folder to the search path of your project, or build the runtime package `packagesCrypto4D.dproj`.
+Add the `src` folder to the search path of your project, or build the runtime package `packages\Crypto4D.dproj`.
 
 ## Return values and exceptions
 
